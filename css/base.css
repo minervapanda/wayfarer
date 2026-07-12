@@ -1,0 +1,243 @@
+/* base.css — design tokens, themes, primitives. Architect-owned.
+   Two axes on <html>:
+     data-app-theme = passport | minimal | scrapbook   (the paper look; paper stays cream)
+     data-theme     = light | dark                     (the scene AROUND the book)
+   Scene defaults follow prefers-color-scheme; explicit data-theme overrides win. */
+
+/* ---------------- reset ---------------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+/* The hidden attribute must always win — author display rules (e.g. .btn's
+   inline-flex, #login-gate's flex) would otherwise override the UA stylesheet
+   and leave "hidden" elements visible. */
+[hidden] { display: none !important; }
+img, svg, video, canvas, audio { max-width: 100%; display: block; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ---------------- tokens: shared ---------------- */
+:root {
+  /* type */
+  --font-body: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, "Times New Roman", serif;
+  --font-script: "Snell Roundhand", "Savoye LET", "Apple Chancery", "Segoe Script", cursive;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* shape & motion */
+  --radius: 14px;
+  --radius-sm: 8px;
+  --dur-1: 160ms;
+  --dur-2: 420ms;
+  --ease: cubic-bezier(.33, .1, .25, 1);
+
+  /* subtle paper grain: SVG feTurbulence as a repeating data-URI tile */
+  --grain: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='140'%20height='140'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.85'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20type='matrix'%20values='0%200%200%200%200.24%200%200%200%200%200.18%200%200%200%200%200.12%200%200%200%200.05%200'/%3E%3C/filter%3E%3Crect%20width='140'%20height='140'%20filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---------------- tokens: paper themes ---------------- */
+/* Default = passport (also set explicitly below for clarity). */
+:root, :root[data-app-theme="passport"] {
+  --paper: #faf4e6;
+  --paper-edge: #e8dcc0;
+  --ink: #3b2f21;
+  --ink-soft: #71614a;
+  --accent: #a3402c;
+  --accent-soft: #c97a4a;
+  --accent-contrast: #ffffff;
+  --tape: rgba(214, 187, 128, 0.55);
+  --line: #d8c6a0;
+  --stamp: #63755a;
+  --shadow: 0 10px 30px rgba(59, 47, 33, 0.22), 0 2px 6px rgba(59, 47, 33, 0.12);
+  --shadow-soft: 0 4px 14px rgba(59, 47, 33, 0.14);
+  --font-head: var(--font-body);
+}
+
+:root[data-app-theme="minimal"] {
+  --paper: #fdfcf9;
+  --paper-edge: #e9e6df;
+  --ink: #1c1a17;
+  --ink-soft: #6c675e;
+  --accent: #0f52c2;
+  --accent-soft: #4589ff;
+  --accent-contrast: #ffffff;
+  --tape: rgba(200, 205, 214, 0.5);
+  --line: #e4e0d8;
+  --stamp: #0f52c2;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 12px 30px rgba(0, 0, 0, 0.1);
+  --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.07);
+  --font-head: var(--font-ui);
+}
+
+:root[data-app-theme="scrapbook"] {
+  --paper: #fff8ef;
+  --paper-edge: #f3ddc2;
+  --ink: #2c2420;
+  --ink-soft: #7a6a5c;
+  --accent: #c8443c;
+  --accent-soft: #f0a04b;
+  --accent-contrast: #ffffff;
+  --tape: rgba(240, 160, 75, 0.4);
+  --line: #f1d9c0;
+  --stamp: #4f8a7b;
+  --shadow: 0 12px 26px rgba(200, 68, 60, 0.18), 0 3px 8px rgba(60, 40, 30, 0.1);
+  --shadow-soft: 0 4px 12px rgba(200, 68, 60, 0.12);
+  --font-head: var(--font-body);
+}
+
+/* ---------------- tokens: scene (around the book) ---------------- */
+/* Light scene: warm linen desk. */
+:root {
+  --scene-bg: #ece2cf;
+  --scene-bg-deep: #e0d2b8;
+  --scene-ink: #4a3d2c;
+  --scene-line: rgba(74, 61, 44, 0.18);
+  --focus-ring: 0 0 0 3px var(--paper), 0 0 0 6px var(--accent);
+}
+
+/* Dark scene: deep walnut desk after dark. Paper surfaces stay cream. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --scene-bg: #241b13;
+    --scene-bg-deep: #180f09;
+    --scene-ink: #d8c9b2;
+    --scene-line: rgba(216, 201, 178, 0.2);
+  }
+}
+:root[data-theme="dark"] {
+  --scene-bg: #241b13;
+  --scene-bg-deep: #180f09;
+  --scene-ink: #d8c9b2;
+  --scene-line: rgba(216, 201, 178, 0.2);
+}
+:root[data-theme="light"] {
+  --scene-bg: #ece2cf;
+  --scene-bg-deep: #e0d2b8;
+  --scene-ink: #4a3d2c;
+  --scene-line: rgba(74, 61, 44, 0.18);
+}
+
+/* ---------------- base ---------------- */
+html { height: 100%; }
+body {
+  min-height: 100%;
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--scene-ink);
+  background:
+    radial-gradient(ellipse at 50% -10%, var(--scene-bg) 40%, var(--scene-bg-deep) 100%);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a { color: var(--accent); }
+
+h1, h2, h3, h4 { font-family: var(--font-head); line-height: 1.2; margin: 0 0 0.4em; }
+
+/* ---------------- primitives ---------------- */
+
+/* A cream sheet of paper with grain and a soft deckled edge. */
+.paper {
+  background-color: var(--paper);
+  background-image: var(--grain);
+  color: var(--ink);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.script {
+  font-family: var(--font-script);
+  font-weight: 400;
+  color: var(--accent);
+}
+
+.btn {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 18px;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: transform var(--dur-1) var(--ease),
+              box-shadow var(--dur-1) var(--ease),
+              background-color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease);
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: var(--shadow-soft);
+}
+.btn-primary:hover {
+  /* Darken on hover, never lighten: white-on---accent-soft fell to ~2.1:1 in
+     the scrapbook theme (#f0a04b) — unreadable at the moment of clicking.
+     A slightly deepened accent keeps every theme ≥ its base contrast (AA). */
+  background: color-mix(in srgb, var(--accent) 85%, #1c0f08);
+  border-color: color-mix(in srgb, var(--accent) 85%, #1c0f08);
+  color: var(--accent-contrast);
+}
+
+.btn-ghost { background: transparent; border-color: transparent; box-shadow: none; }
+.btn-ghost:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+
+.btn-danger { background: #8c2b1e; border-color: #8c2b1e; color: #fff; }
+.btn-danger:hover { background: #a3402c; border-color: #a3402c; color: #fff; }
+
+.btn[disabled], .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
+
+input[type="text"], input[type="email"], input[type="date"], input[type="search"], textarea, select {
+  font-family: var(--font-body);
+  font-size: 16px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--paper) 60%, #ffffff 40%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  min-height: 44px;
+  width: 100%;
+}
+textarea { resize: vertical; line-height: 1.6; }
+input::placeholder, textarea::placeholder { color: var(--ink-soft); opacity: 0.75; font-style: italic; }
+
+/* ---------------- focus ---------------- */
+:focus { outline: none; }
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+.btn:focus-visible { border-radius: 999px; }
+
+/* ---------------- utilities ---------------- */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
+}
+
+/* ---------------- reduced motion ---------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-1: 0ms; --dur-2: 0ms; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en" data-app-theme="passport">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Wayfarer — Travel Diary</title>
+<meta name="description" content="Wayfarer — your private travel diary. Photos, places, stories and voice notes, kept like a real book.">
+<!-- PNG first: Safari (macOS/iOS) ignores SVG favicons and would otherwise
+     show a blank icon and 404 on /favicon.ico at the github.io root.
+     SVG-capable browsers prefer the later, type-matched SVG link. -->
+<link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAbUlEQVR42mNgGAWjYDCBxQ46/0nBVXryYEyqPqpYTokDsDoCJvHryzOiMcwBpOgZdQDRDihM9FqFC+NyADF6RqNgZKQB5Pw+IGkA2QEDEgUD7gCYRaPlwGg5MJoGRtMAWQ4YsDbhgLeKR8GIBQAEonvBUkBMZQAAAABJRU5ErkJggg==">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ctext%20y='0.9em'%20font-size='90'%3E%F0%9F%93%96%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="./css/base.css">
+<link rel="stylesheet" href="./css/app.css">
+<link rel="stylesheet" href="./css/book.css">
+<link rel="stylesheet" href="./css/voice.css">
+<link rel="stylesheet" href="./css/journal.css">
+</head>
+<body>
+
+<noscript>
+  <div class="noscript-note paper">
+    <h1>Wayfarer</h1>
+    <p>This travel diary needs JavaScript to open. Please enable it and reload.</p>
+  </div>
+</noscript>
+
+<!-- Landing / login gate. auth.js shows or hides this; hidden entirely in local mode. -->
+<section id="login-gate" hidden aria-label="Sign in to Wayfarer">
+  <div class="gate-card paper">
+    <p class="script gate-eyebrow">a private travel diary</p>
+    <h1 class="gate-title">Wayfarer</h1>
+    <p class="gate-lede">This diary is private. Enter your email and we’ll send you a magic link — no password to remember.</p>
+    <form class="gate-form" novalidate>
+      <label class="visually-hidden" for="login-email">Email address</label>
+      <input id="login-email" type="email" name="email" autocomplete="email" inputmode="email"
+             placeholder="you@example.com" required>
+      <button id="login-send" type="submit" class="btn btn-primary">Send magic link</button>
+    </form>
+    <p id="login-status" class="gate-status" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<!-- Boot splash: removed by main.js once the diary is open. -->
+<div id="boot-splash" role="status" aria-live="polite">
+  <span class="script boot-word">Opening your diary…</span>
+</div>
+
+<div id="app" hidden>
+  <header class="app-header" role="banner">
+    <div class="header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">✈</span>
+        <span class="brand-name">Wayfarer</span>
+        <span class="brand-tag script">your trip, remembered properly</span>
+      </div>
+
+      <nav class="header-controls" aria-label="Diary controls">
+        <div id="view-toggle" class="view-toggle" role="group" aria-label="Switch view">
+          <button type="button" class="btn btn-ghost" data-view="book" aria-pressed="true">Book</button>
+          <button type="button" class="btn btn-ghost" data-view="journal" aria-pressed="false">Journal</button>
+        </div>
+
+        <div id="theme-picker" class="theme-picker" role="group" aria-label="Choose a look">
+          <button type="button" class="theme-swatch theme-swatch-passport" data-app-theme="passport"
+                  aria-pressed="true" title="Passport"><span class="visually-hidden">Passport theme</span></button>
+          <button type="button" class="theme-swatch theme-swatch-minimal" data-app-theme="minimal"
+                  aria-pressed="false" title="Minimal"><span class="visually-hidden">Minimal theme</span></button>
+          <button type="button" class="theme-swatch theme-swatch-scrapbook" data-app-theme="scrapbook"
+                  aria-pressed="false" title="Scrapbook"><span class="visually-hidden">Scrapbook theme</span></button>
+        </div>
+
+        <span id="sync-status" class="sync-status" role="status" aria-live="polite"></span>
+
+        <button type="button" id="btn-new-entry" class="btn btn-primary">＋ New entry</button>
+
+        <details class="header-more">
+          <summary class="btn btn-ghost" aria-label="More actions">⋯</summary>
+          <div class="header-more-menu paper">
+            <button type="button" id="btn-export-json" class="btn btn-ghost">Save diary (.json)</button>
+            <button type="button" id="btn-import-json" class="btn btn-ghost">Load diary…</button>
+            <button type="button" id="btn-export-html" class="btn btn-ghost">Export shareable page</button>
+            <button type="button" id="btn-load-demo" class="btn btn-ghost">Load demo trip</button>
+            <button type="button" id="btn-signout" class="btn btn-ghost" hidden>Sign out</button>
+          </div>
+        </details>
+      </nav>
+    </div>
+  </header>
+
+  <main class="app-main" role="main">
+    <section id="book-root" class="view-root" aria-label="Diary book view"></section>
+    <section id="journal-root" class="view-root" aria-label="Diary journal view" hidden></section>
+  </main>
+
+  <footer class="app-footer">
+    <span id="osm-attribution"></span>
+    <span class="footer-note">Your diary lives in this browser (and your private cloud, if you’ve signed in). Nothing is public.</span>
+  </footer>
+</div>
+
+<!-- Compose modal: the writing desk. Controller lives in js/main.js. -->
+<dialog id="compose-modal" class="compose-modal" aria-labelledby="compose-heading">
+  <form method="dialog" class="compose-sheet paper" novalidate>
+    <header class="compose-header">
+      <p class="script compose-eyebrow">dear diary…</p>
+      <h2 id="compose-heading">New entry</h2>
+    </header>
+
+    <div class="compose-grid">
+      <div class="compose-col-photos">
+        <div id="compose-photos-drop" class="photos-drop" role="button" tabindex="0"
+             aria-label="Add photos: click to choose files, or drag photos here">
+          <span class="photos-drop-icon" aria-hidden="true">📷</span>
+          <span class="photos-drop-text">Drop photos here<br><small>or click to choose — originals keep their location</small></span>
+        </div>
+        <input type="file" id="compose-photo-input" accept="image/*" multiple hidden>
+        <ul id="compose-photo-list" class="photo-list" aria-label="Photos in this entry" aria-live="polite"></ul>
+      </div>
+
+      <div class="compose-col-fields">
+        <div class="field">
+          <label for="compose-title">Title</label>
+          <input id="compose-title" type="text" maxlength="140" placeholder="A perfect day in…" autocomplete="off">
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="compose-date">Date</label>
+            <input id="compose-date" type="date">
+          </div>
+          <div class="field field-grow">
+            <label for="compose-location">Location</label>
+            <input id="compose-location" type="text" maxlength="140" placeholder="Where were you?" autocomplete="off">
+            <p id="compose-location-status" class="field-status" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="field">
+          <div class="field-label-row">
+            <label for="compose-story">Story</label>
+            <button type="button" id="compose-mic-btn" class="btn btn-ghost mic-btn"
+                    aria-label="Dictate your story" aria-pressed="false">🎙 Dictate</button>
+          </div>
+          <textarea id="compose-story" rows="7"
+                    placeholder="What do you remember? What did you eat, who were you with, what surprised you…"></textarea>
+          <p id="compose-dictation-status" class="field-status" aria-live="polite"></p>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Voice note</span>
+          <div id="compose-voice-root" class="voice-root"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="compose-footer">
+      <button type="button" id="compose-delete" class="btn btn-danger" hidden>Delete entry</button>
+      <span class="compose-footer-spacer"></span>
+      <button type="button" id="compose-cancel" class="btn">Cancel</button>
+      <button type="button" id="compose-save" class="btn btn-primary">Save entry</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- Confirm dialog: driven only by util.confirmDialog(). -->
+<dialog id="confirm-modal" class="confirm-modal" aria-labelledby="confirm-message">
+  <form method="dialog" class="confirm-sheet paper">
+    <p id="confirm-message"></p>
+    <div class="confirm-actions">
+      <button type="button" id="confirm-cancel" class="btn">Cancel</button>
+      <button type="button" id="confirm-ok" class="btn btn-primary">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Toast stack: driven only by util.toast(). -->
+<div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+<!-- Hidden import input, wired by exporter.js -->
+<input type="file" id="import-json-input" accept="application/json,.json" hidden>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

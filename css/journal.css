@@ -1,0 +1,458 @@
+/* journal.css — the editorial chapter-stack journal view. OWNER: Builder 5.
+   Everything rendered by js/journal.js into #journal-root. Uses only tokens
+   from base.css; motion durations come from --dur-* (zeroed under reduced
+   motion by base.css). */
+
+#journal-root {
+  padding: 24px 16px 96px;
+}
+
+.jr-wrap {
+  max-width: 980px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ---------------- loading / error / empty states ---------------- */
+
+.jr-state {
+  max-width: 620px;
+  margin: 8vh auto 0;
+  padding: 44px 36px;
+  text-align: center;
+}
+.jr-state-head { font-size: 26px; }
+.jr-state-text { color: var(--ink-soft); line-height: 1.65; margin: 0 0 20px; }
+
+.jr-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: jr-spin 0.8s linear infinite;
+}
+@keyframes jr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .jr-spinner { animation: none; border-top-color: var(--line); }
+}
+
+.jr-empty-eyebrow { font-size: 26px; margin: 0 0 4px; }
+.jr-empty-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ---------------- heading ---------------- */
+
+.jr-head { text-align: center; margin-top: 12px; }
+.jr-head-eyebrow {
+  font-size: 26px;
+  margin: 0 0 2px;
+}
+.jr-head-title {
+  font-size: clamp(30px, 5vw, 42px);
+  color: var(--scene-ink);
+  letter-spacing: 0.4px;
+  margin: 0;
+}
+
+/* ---------------- stats row ---------------- */
+
+.jr-stats {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.jr-stat {
+  background-color: var(--paper);
+  background-image: var(--grain);
+  color: var(--ink);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
+  padding: 10px 20px;
+  min-width: 104px;
+  text-align: center;
+}
+.jr-stat b {
+  display: block;
+  font-size: 22px;
+  font-family: var(--font-head);
+  color: var(--accent);
+  line-height: 1.2;
+}
+.jr-stat span {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* ---------------- overview map ---------------- */
+
+.jr-map {
+  margin: 0;
+  padding: 10px 10px 4px;
+  overflow: hidden;
+}
+.jr-map svg { display: block; width: 100%; height: auto; }
+.jr-map .wm-frame { stroke: var(--line); }
+.jr-map .wm-grid { stroke: var(--line); stroke-width: 1; opacity: 0.7; }
+.jr-map .wm-equator {
+  stroke: var(--ink-soft);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.55;
+}
+.jr-map .wm-pin { cursor: pointer; }
+.jr-map .wm-pin circle {
+  fill: var(--accent);
+  stroke: var(--paper);
+  stroke-width: 2;
+  transition: fill var(--dur-1) var(--ease);
+}
+.jr-map .wm-pin:hover circle,
+.jr-map .wm-pin:focus-visible circle { fill: var(--accent-soft); }
+.jr-map .wm-pin:focus-visible { outline: none; }
+.jr-map .wm-pin:focus-visible circle { stroke: var(--ink); stroke-width: 3; }
+.jr-map .wm-label {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  fill: var(--ink);
+  pointer-events: none;
+}
+.jr-map .wm-num {
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  fill: var(--accent-contrast);
+  pointer-events: none;
+}
+.jr-map-caption {
+  text-align: center;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--ink-soft);
+  padding: 8px 0 10px;
+}
+/* invisible touch target around each pin (r=32 in viewBox units) — must never
+   pick up the pin's fill/hover/focus paint. Kept last so it wins the tie with
+   the hover/focus circle rules above. */
+.jr-map .wm-pin circle.wm-hit,
+.jr-map .wm-pin:hover circle.wm-hit,
+.jr-map .wm-pin:focus-visible circle.wm-hit {
+  fill: transparent;
+  stroke: none;
+}
+/* Small screens: don't let the whole world shrink to nothing — keep the map
+   at a usable minimum width and let it pan inside its own container (the page
+   itself never scrolls horizontally). */
+@media (max-width: 760px) {
+  .jr-map { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .jr-map svg { min-width: 700px; }
+}
+
+/* ---------------- chapters ---------------- */
+
+.jr-chapters {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  margin-top: 14px;
+}
+
+.jr-chapter {
+  overflow: hidden;
+  padding: 0;
+}
+
+/* hero band */
+.jr-hero {
+  position: relative;
+  height: 320px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--paper-edge), var(--paper));
+}
+.jr-hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.jr-hero-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 26px 32px;
+  background: linear-gradient(180deg, rgba(20, 12, 4, 0) 38%, rgba(20, 12, 4, 0.68) 100%);
+  pointer-events: none;
+}
+.jr-hero-eyebrow {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 250, 240, 0.85);
+  margin: 0 0 4px;
+}
+.jr-hero-place {
+  font-size: clamp(24px, 4vw, 34px);
+  color: #fffdf7;
+  margin: 0;
+  line-height: 1.12;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+.jr-hero-sub {
+  color: rgba(255, 250, 240, 0.92);
+  font-size: 13.5px;
+  font-style: italic;
+  letter-spacing: 0.3px;
+  margin: 6px 0 0;
+}
+
+/* hero variant when the entry has no photo: quiet cream card */
+.jr-hero.jr-no-photo { height: 200px; }
+.jr-hero.jr-no-photo .jr-hero-overlay {
+  background: none;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+.jr-hero.jr-no-photo .jr-hero-eyebrow { color: var(--ink-soft); }
+.jr-hero.jr-no-photo .jr-hero-place { color: var(--ink); text-shadow: none; }
+.jr-hero.jr-no-photo .jr-hero-sub { color: var(--ink-soft); }
+
+.jr-hero.jr-photo-missing .jr-hero-img { visibility: hidden; }
+
+.jr-edit {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 18px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: #fffdf7;
+  background: rgba(20, 12, 4, 0.44);
+  border: 1px solid rgba(255, 250, 240, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+  backdrop-filter: blur(3px);
+  transition: background-color var(--dur-1) var(--ease);
+}
+.jr-edit:hover { background: rgba(20, 12, 4, 0.66); }
+.jr-hero.jr-no-photo .jr-edit {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--line);
+}
+.jr-hero.jr-no-photo .jr-edit:hover { border-color: var(--accent); color: var(--accent); background: var(--paper); }
+
+/* chapter body */
+.jr-body {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 40px;
+  padding: 32px 36px 36px;
+}
+
+.jr-narrative {
+  line-height: 1.8;
+  font-size: 16px;
+}
+.jr-narrative p { margin: 0 0 1em; }
+.jr-narrative p:last-child { margin-bottom: 0; }
+.jr-dropcap > p:first-child::first-letter {
+  font-family: var(--font-head);
+  font-size: 2.7em;
+  float: left;
+  line-height: 0.78;
+  padding: 5px 8px 0 0;
+  color: var(--accent);
+}
+.jr-unwritten {
+  color: var(--ink-soft);
+  font-style: italic;
+}
+.jr-source {
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--ink-soft);
+  margin: 14px 0 0;
+}
+
+.jr-note, .jr-voice {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.jr-note-label {
+  font-size: 21px;
+  margin: 0 0 6px;
+}
+.jr-story {
+  font-style: italic;
+  line-height: 1.75;
+  font-size: 15px;
+}
+.jr-story p { margin: 0 0 0.9em; }
+.jr-story p:last-child { margin-bottom: 0; }
+
+/* side column */
+.jr-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.jr-minimap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--paper) 70%, var(--paper-edge) 30%);
+}
+.jr-minimap-pin {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  background: var(--accent);
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+}
+.jr-minimap-coords {
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  color: var(--ink-soft);
+  letter-spacing: 0.3px;
+}
+
+/* photo strip */
+.jr-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+.jr-thumb {
+  padding: 0;
+  border: none;
+  background: var(--paper-edge);
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  min-width: 44px;
+  min-height: 44px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
+  transition: transform var(--dur-1) var(--ease);
+}
+.jr-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.jr-thumb:hover { transform: scale(1.04); }
+.jr-thumb.jr-photo-missing img { visibility: hidden; }
+
+/* the scrapbook look tilts snapshots like taped-in prints */
+:root[data-app-theme="scrapbook"] .jr-thumb {
+  border: 5px solid #fff;
+  border-radius: 2px;
+}
+:root[data-app-theme="scrapbook"] .jr-thumb:nth-child(3n + 1) { transform: rotate(-2.5deg); }
+:root[data-app-theme="scrapbook"] .jr-thumb:nth-child(3n + 2) { transform: rotate(1.5deg); }
+:root[data-app-theme="scrapbook"] .jr-thumb:nth-child(3n) { transform: rotate(-1deg); }
+:root[data-app-theme="scrapbook"] .jr-thumb:hover { transform: scale(1.05) rotate(0deg); }
+
+/* ---------------- lightbox ---------------- */
+
+.jr-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 28px;
+  background: rgba(12, 8, 4, 0.88);
+}
+.jr-lightbox[hidden] { display: none; }
+
+.jr-lb-fig {
+  margin: 0;
+  max-width: min(92vw, 1100px);
+  text-align: center;
+}
+.jr-lb-img {
+  max-width: 100%;
+  max-height: 78vh;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.55);
+}
+.jr-lb-cap {
+  color: #f3ead9;
+  font-size: 13.5px;
+  font-style: italic;
+  margin-top: 12px;
+}
+
+.jr-lb-close,
+.jr-lb-nav {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: 26px;
+  line-height: 1;
+  color: #f3ead9;
+  background: rgba(255, 250, 240, 0.1);
+  border: 1px solid rgba(255, 250, 240, 0.35);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease);
+}
+.jr-lb-close:hover, .jr-lb-nav:hover { background: rgba(255, 250, 240, 0.24); }
+.jr-lb-close:focus-visible, .jr-lb-nav:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(12, 8, 4, 1), 0 0 0 6px #f3ead9;
+}
+.jr-lb-close {
+  position: absolute;
+  top: 20px;
+  right: 22px;
+}
+
+/* ---------------- responsive ---------------- */
+
+@media (max-width: 760px) {
+  .jr-body {
+    grid-template-columns: 1fr;
+    gap: 26px;
+    padding: 24px 20px 28px;
+  }
+  .jr-hero { height: 230px; }
+  .jr-lightbox { padding: 14px; gap: 6px; }
+  .jr-lb-close { top: 10px; right: 10px; }
+}

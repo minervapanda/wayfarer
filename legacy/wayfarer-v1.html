@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Wayfarer Travel Diary",
+  "schemaVersion": 1,
+  "description": "Wayfarer travel diary — upload trip photos, auto-detects location from GPS metadata, matches historical/cultural context, and organizes everything into a shareable diary.",
+  "mcpTools": [],
+  "mcpServerNames": []
+}
+</script>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wayfarer — Travel Diary</title>
+<!-- No external map/tile service is used — maps are drawn as inline SVG so this
+     page has zero network dependency for its core functionality and renders
+     identically offline, in a locked-down preview sandbox, or anywhere else. -->
+<style>
+  :root{
+    --radius: 14px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    min-height:100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    transition: background .3s ease, color .3s ease;
+  }
+
+  /* ============ THEME: VINTAGE PASSPORT ============ */
+  body[data-theme="vintage"]{
+    --bg:#f3ead9;
+    --bg-alt:#ebdfc7;
+    --paper:#fbf5e8;
+    --ink:#3c2f22;
+    --ink-soft:#6b5a44;
+    --accent:#a3402c;
+    --accent-soft:#c97a4a;
+    --line: #d8c6a0;
+    --card-shadow: 0 6px 18px rgba(60,47,34,.18);
+    --font-head: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+    --font-body: Georgia, 'Palatino Linotype', serif;
+    --stamp: #7a8c6e;
+  }
+  /* ============ THEME: MODERN MINIMAL ============ */
+  body[data-theme="minimal"]{
+    --bg:#fafafa;
+    --bg-alt:#f0f0f0;
+    --paper:#ffffff;
+    --ink:#171717;
+    --ink-soft:#6e6e6e;
+    --accent:#0f62fe;
+    --accent-soft:#4589ff;
+    --line:#e4e4e4;
+    --card-shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
+    --font-head: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --font-body: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    --stamp: #0f62fe;
+  }
+  /* ============ THEME: SCRAPBOOK ============ */
+  body[data-theme="scrapbook"]{
+    --bg:#fef6ee;
+    --bg-alt:#fdebd8;
+    --paper:#ffffff;
+    --ink:#2c2420;
+    --ink-soft:#7a6a5c;
+    --accent:#e0574f;
+    --accent-soft:#f0a04b;
+    --line:#f1d9c0;
+    --card-shadow: 0 10px 22px rgba(224,87,79,.16);
+    --font-head: 'Segoe UI', Verdana, sans-serif;
+    --font-body: 'Segoe UI', Verdana, sans-serif;
+    --stamp: #4f8a7b;
+  }
+
+  a{color:var(--accent);}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 80px;}
+
+  /* ---------------- HEADER ---------------- */
+  header.top{
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+    position:sticky; top:0; z-index:50;
+  }
+  .top-inner{
+    max-width:1080px;margin:0 auto;padding:16px 20px;
+    display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand h1{
+    font-family:var(--font-head);
+    font-size:26px;margin:0;letter-spacing:.5px;color:var(--ink);
+  }
+  .brand small{color:var(--ink-soft);font-size:12px;}
+  .top-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+  .theme-picker{display:flex;gap:6px;align-items:center;margin-right:8px;}
+  .swatch{
+    width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;
+    display:inline-block;
+  }
+  .swatch.active{border-color:var(--ink);}
+  .swatch.v{background:linear-gradient(135deg,#a3402c,#f3ead9);}
+  .swatch.m{background:linear-gradient(135deg,#0f62fe,#fafafa);}
+  .swatch.s{background:linear-gradient(135deg,#e0574f,#fef6ee);}
+
+  button, .btn{
+    font-family:var(--font-body);
+    background:var(--paper);
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:8px 14px;
+    border-radius:999px;
+    cursor:pointer;
+    font-size:13px;
+    font-weight:600;
+    display:inline-flex;align-items:center;gap:6px;
+    transition:.15s ease;
+  }
+  button:hover, .btn:hover{border-color:var(--accent);color:var(--accent);}
+  button.primary{
+    background:var(--accent); color:#fff; border-color:var(--accent);
+  }
+  button.primary:hover{background:var(--accent-soft); border-color:var(--accent-soft); color:#fff;}
+  button.ghost{background:transparent;border-color:transparent;}
+  input[type=file]{display:none;}
+
+  /* ---------------- HERO / EMPTY STATE ---------------- */
+  .hero{
+    padding:56px 0 28px; text-align:center;
+  }
+  .hero h2{
+    font-family:var(--font-head); font-size:34px; margin:0 0 10px; color:var(--ink);
+  }
+  .hero p{color:var(--ink-soft); max-width:560px; margin:0 auto 26px; line-height:1.55;}
+
+  .dropzone{
+    border:2px dashed var(--line);
+    border-radius:var(--radius);
+    background:var(--paper);
+    padding:40px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:.15s ease;
+  }
+  .dropzone.drag{border-color:var(--accent); background:var(--bg-alt);}
+  .dropzone h3{margin:6px 0 4px; font-family:var(--font-head);}
+  .dropzone p{color:var(--ink-soft); font-size:13px; margin:0;}
+  .dz-icon{font-size:34px;}
+
+  .import-row{
+    display:flex; gap:10px; margin-top:18px; flex-wrap:wrap; justify-content:center;
+  }
+  .gphotos-box{
+    background:var(--paper); border:1px solid var(--line); border-radius:var(--radius);
+    padding:18px 20px; margin-top:18px; text-align:left;
+  }
+  .gphotos-box h4{margin:0 0 6px; font-family:var(--font-head);}
+  .gphotos-box p{color:var(--ink-soft); font-size:13px; line-height:1.5; margin:0 0 10px;}
+  .gphotos-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .gphotos-row input[type=text]{
+    flex:1; min-width:220px; padding:9px 12px; border-radius:8px; border:1px solid var(--line);
+    font-family:var(--font-body); font-size:13px; background:var(--bg);
+    color:var(--ink);
+  }
+  .note{
+    font-size:12px; color:var(--ink-soft); background:var(--bg-alt); border-radius:8px;
+    padding:8px 12px; margin-top:8px; line-height:1.5;
+  }
+
+  /* ---------------- MAP OVERVIEW (inline SVG, no external tiles) ---------------- */
+  #overview-map{
+    border-radius:var(--radius); margin:24px 0; box-shadow:var(--card-shadow);
+    border:1px solid var(--line); background:var(--bg-alt); overflow:hidden;
+  }
+  #overview-map svg{display:block; width:100%; height:auto;}
+  .wm-grid{stroke:var(--line); stroke-width:1;}
+  .wm-equator{stroke:var(--ink-soft); stroke-width:1; stroke-dasharray:4 3; opacity:.6;}
+  .wm-pin{cursor:pointer;}
+  .wm-pin circle{fill:var(--accent); stroke:var(--paper); stroke-width:2;}
+  .wm-pin:hover circle{fill:var(--accent-soft);}
+  .wm-pin text{
+    font-family:var(--font-body); font-size:11px; fill:var(--ink); pointer-events:none;
+  }
+  .wm-caption{
+    text-align:center; font-size:11px; color:var(--ink-soft); padding:6px 0 10px;
+  }
+  .stats-row{display:flex; gap:14px; flex-wrap:wrap; justify-content:center; margin:14px 0 6px;}
+  .stat{
+    background:var(--paper); border:1px solid var(--line); border-radius:12px;
+    padding:10px 18px; text-align:center; min-width:100px;
+  }
+  .stat b{display:block; font-size:20px; font-family:var(--font-head); color:var(--accent);}
+  .stat span{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.5px;}
+
+  /* ---------------- CHAPTERS — editorial "spread" layout ---------------- */
+  .chapters{margin-top:44px; display:flex; flex-direction:column; gap:48px;}
+  .chapter{
+    background:var(--paper);
+    border-radius:var(--radius);
+    box-shadow:var(--card-shadow);
+    border:1px solid var(--line);
+    overflow:hidden;
+  }
+
+  /* Hero band: the chapter's lead photo with the title set directly on it,
+     like a printed travel-journal spread rather than a form field. */
+  .chapter-hero{
+    position:relative; width:100%; height:300px; overflow:hidden;
+    background: linear-gradient(135deg, var(--bg-alt), var(--paper));
+  }
+  .chapter-hero img{ width:100%; height:100%; object-fit:cover; display:block; }
+  .chapter-hero .hero-overlay{
+    position:absolute; inset:0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.62) 100%);
+    display:flex; flex-direction:column; justify-content:flex-end;
+    padding:28px 34px;
+  }
+  .chapter-hero.no-photo .hero-overlay{
+    background:none; justify-content:center; align-items:center; text-align:center;
+  }
+  .chapter-hero.no-photo .hero-place{ color:var(--ink); text-shadow:none; }
+  .chapter-hero.no-photo .hero-sub{ color:var(--ink-soft); }
+  .hero-eyebrow{
+    color:rgba(255,255,255,.8); font-size:11px; letter-spacing:2px; text-transform:uppercase;
+    margin-bottom:4px;
+  }
+  .chapter-hero.no-photo .hero-eyebrow{ color:var(--ink-soft); }
+  .hero-place{
+    font-family:var(--font-head); font-size:32px; margin:0; color:#fff; line-height:1.1;
+    text-shadow:0 2px 10px rgba(0,0,0,.45); letter-spacing:.2px;
+  }
+  .hero-sub{ color:rgba(255,255,255,.9); font-size:13px; margin-top:6px; letter-spacing:.3px; }
+  .hero-remove{
+    position:absolute; top:16px; right:16px; width:30px; height:30px; border-radius:50%;
+    background:rgba(0,0,0,.35); color:#fff; border:1px solid rgba(255,255,255,.4);
+    display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:16px;
+    padding:0; line-height:1;
+  }
+  .hero-remove:hover{ background:rgba(0,0,0,.55); }
+  .chapter-hero.no-photo .hero-remove{ background:var(--paper); color:var(--ink-soft); border-color:var(--line); }
+
+  .chapter-body{padding:32px 36px 34px; display:grid; grid-template-columns: 1.4fr 1fr; gap:40px;}
+  @media(max-width:760px){ .chapter-body{grid-template-columns:1fr; padding:26px 22px 28px;} .chapter-hero{height:220px;} }
+
+  .narrative{
+    font-family:var(--font-body); line-height:1.8; color:var(--ink); font-size:15.5px;
+  }
+  .narrative::first-letter{
+    font-family:var(--font-head); font-size:2.7em; float:left; line-height:.78;
+    padding:4px 8px 0 0; color:var(--accent);
+  }
+  .narrative-source{
+    font-size:11.5px; font-style:italic; color:var(--ink-soft); margin-top:14px;
+  }
+
+  .personal-note{margin-top:26px; padding-top:22px; border-top:1px solid var(--line);}
+  .personal-note label{
+    font-family:var(--font-head); font-style:italic; font-size:14px; color:var(--ink-soft);
+  }
+  .personal-note textarea{
+    width:100%; min-height:64px; margin-top:8px; border:none; border-bottom:1px solid var(--line);
+    border-radius:0; padding:6px 2px; font-family:var(--font-body); font-style:italic; font-size:14.5px;
+    resize:vertical; background:transparent; color:var(--ink);
+  }
+  .personal-note textarea:focus{ outline:none; border-bottom-color:var(--accent); }
+  .personal-note textarea::placeholder{ font-style:italic; opacity:.65; }
+
+  .side-col{display:flex; flex-direction:column; gap:22px;}
+  .mini-map{
+    border-radius:10px; border:1px solid var(--line); background:var(--bg-alt);
+    padding:20px; text-align:center;
+  }
+  .mini-map .mm-pin{
+    width:13px; height:13px; margin:0 auto 12px; background:var(--accent);
+    border-radius:50% 50% 50% 0; transform:rotate(-45deg);
+  }
+  .mini-map .mm-coords{
+    font-family:var(--font-body); font-size:12.5px; color:var(--ink-soft); letter-spacing:.3px;
+  }
+
+  .photo-grid{
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:8px;
+  }
+  .photo-grid figure{margin:0; position:relative; cursor:pointer;}
+  .photo-grid img{
+    width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:6px; display:block;
+    box-shadow: 0 2px 6px rgba(0,0,0,.12);
+    transition: transform .15s ease;
+  }
+  .photo-grid figure:hover img{ transform:scale(1.03); }
+  body[data-theme="scrapbook"] .photo-grid img{
+    border:5px solid #fff; border-radius:2px;
+  }
+  body[data-theme="scrapbook"] .photo-grid figure:nth-child(3n+1) img{ transform:rotate(-2.5deg); }
+  body[data-theme="scrapbook"] .photo-grid figure:nth-child(3n+2) img{ transform:rotate(1.5deg); }
+  body[data-theme="scrapbook"] .photo-grid figure:nth-child(3n) img{ transform:rotate(-1deg); }
+  body[data-theme="scrapbook"] .photo-grid figure:hover img{ transform:scale(1.05) rotate(0deg); }
+
+  .add-photo-tile{
+    aspect-ratio:1/1; border:1.5px dashed var(--line); border-radius:6px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color:var(--ink-soft); font-size:20px; font-family:var(--font-head);
+  }
+  .add-photo-tile:hover{border-color:var(--accent); color:var(--accent);}
+
+  /* Manual location tag inline form */
+  .tag-form{display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;}
+  .tag-form input{flex:1; min-width:160px; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-family:var(--font-body);}
+
+  /* ---------------- LIGHTBOX ---------------- */
+  .lightbox{
+    position:fixed; inset:0; background:rgba(0,0,0,.85); display:none;
+    align-items:center; justify-content:center; z-index:100; padding:30px;
+  }
+  .lightbox.open{display:flex;}
+  .lightbox img{max-width:92vw; max-height:80vh; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,.5);}
+  .lightbox-cap{color:#fff; text-align:center; margin-top:12px; font-size:13px;}
+  .lightbox-close{position:absolute; top:20px; right:26px; color:#fff; font-size:28px; cursor:pointer; background:none; border:none;}
+
+  /* ---------------- FOOTER TOOLBAR ---------------- */
+  .toolbar{
+    display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:44px;
+    padding-top:24px; border-top:1px solid var(--line);
+  }
+  footer.legal{
+    text-align:center; color:var(--ink-soft); font-size:12px; padding:30px 20px 60px; line-height:1.6;
+  }
+
+  .empty-hint{
+    text-align:center; color:var(--ink-soft); font-size:13px; margin-top:10px;
+  }
+
+  .badge{
+    display:inline-block; font-size:10px; text-transform:uppercase; letter-spacing:.6px;
+    background:var(--bg-alt); color:var(--ink-soft); border-radius:999px; padding:3px 10px; margin-left:8px;
+  }
+
+  .loading-row{display:flex; align-items:center; gap:8px; color:var(--ink-soft); font-size:13px; margin-top:10px; justify-content:center;}
+  .spinner{
+    width:14px;height:14px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  #file-input-hidden{display:none;}
+</style>
+</head>
+<body data-theme="vintage">
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <h1>✈ Wayfarer</h1>
+      <small>your trip, remembered properly</small>
+    </div>
+    <div class="top-actions">
+      <div class="theme-picker" title="Change look">
+        <span class="swatch v active" data-theme="vintage"></span>
+        <span class="swatch m" data-theme="minimal"></span>
+        <span class="swatch s" data-theme="scrapbook"></span>
+      </div>
+      <button class="btn" id="btn-add-photos">+ Add Photos</button>
+      <button class="btn" id="btn-export-json">⭳ Save Diary</button>
+      <button class="btn" id="btn-import-json">⭱ Load Diary</button>
+      <button class="btn primary" id="btn-export-html">Export Shareable Page</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="hero" id="hero-section">
+    <h2>Turn your trip photos into a real travel diary</h2>
+    <p>Drop in photos from your trip. Wayfarer reads the location baked into each photo, looks up where you were, and writes the history and culture of the place next to your pictures — organized into chapters you can edit, save, and share.</p>
+
+    <div class="dropzone" id="dropzone">
+      <div class="dz-icon">📷</div>
+      <h3>Drag photos here, or click to choose files</h3>
+      <p>Works best with original photos (JPEGs straight off your phone) — those carry the GPS location Wayfarer needs.</p>
+    </div>
+
+    <div class="gphotos-box">
+      <h4>Have your trip in Google Photos instead? <span class="badge">import</span></h4>
+      <p>
+        Wayfarer runs entirely in your browser and can't sign in to your Google account on its own, so it can't reach into a private
+        Google Photos library directly. Two ways to bring photos in from there:
+      </p>
+      <div class="gphotos-row">
+        <input type="text" id="gphotos-link" placeholder="Paste a Google Photos shared album link (photos.app.goo.gl/…)">
+        <button class="btn" id="btn-open-gphotos">Open Album ↗</button>
+      </div>
+      <p class="note">
+        <strong>Option A (recommended):</strong> open the album, select <em>Download all</em> (or the photos you want),
+        then drag those downloaded files into the box above — this keeps the original GPS/date info Wayfarer reads automatically.<br>
+        <strong>Option B:</strong> paste a direct image link below (right-click a photo in the album → “Copy image address”) and Wayfarer will try to pull it in directly — this sometimes works for public albums, but Google usually strips location data from shared-link images, so you may need to set the place manually.
+      </p>
+      <div class="gphotos-row" style="margin-top:6px;">
+        <input type="text" id="gphotos-img-link" placeholder="Paste a direct Google Photos image URL">
+        <button class="btn" id="btn-fetch-gphotos-img">Try Import</button>
+      </div>
+    </div>
+
+    <input type="file" id="file-input-hidden" accept="image/*" multiple>
+    <div class="loading-row" id="loading-row" style="display:none;">
+      <span class="spinner"></span><span id="loading-text">Reading photo locations…</span>
+    </div>
+  </section>
+
+  <div id="overview-map" style="display:none;"></div>
+  <div class="stats-row" id="stats-row" style="display:none;"></div>
+
+  <div class="chapters" id="chapters"></div>
+
+  <div class="toolbar" id="toolbar" style="display:none;">
+    <button class="btn" id="btn-add-photos-2">+ Add More Photos</button>
+    <button class="btn" id="btn-add-chapter">+ Add Location Manually</button>
+    <button class="btn" id="btn-export-json-2">⭳ Save Diary (.json)</button>
+    <button class="btn primary" id="btn-export-html-2">Export Shareable Page (.html)</button>
+  </div>
+</div>
+
+<footer class="legal">
+  Everything above — your photos, notes, and this diary's data — lives only in this browser tab.<br>
+  Nothing is uploaded anywhere. Use <strong>Save Diary</strong> to keep a backup file, or <strong>Export Shareable Page</strong> to create one self-contained file with your photos baked in, ready to send to anyone or reopen and keep editing later.<br>
+  Historical notes are AI-drafted from well-known, general reference facts — worth a quick check before you publish or print.
+</footer>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close">×</button>
+  <div>
+    <img id="lightbox-img" src="">
+    <div class="lightbox-cap" id="lightbox-cap"></div>
+  </div>
+</div>
+
+<input type="file" id="import-json-input" accept="application/json" style="display:none;">
+
+<script id="diary-state" type="application/json">{}</script>
+
+<script>
+(function(){
+
+/* =========================================================================
+   CURATED HISTORICAL / CULTURAL NARRATIVE LIBRARY
+   Keyed by normalized city/town name. General, well-established facts —
+   meant as a solid starting draft, not the final word.
+   ========================================================================= */
+const NARRATIVES = {
+  "paris": "Paris grew from a Celtic settlement on the Île de la Cité over two thousand years ago into the seat of French kings and, after 1789, the stage for a revolution that reshaped Europe's politics. Baron Haussmann's 19th-century rebuilding gave it the wide boulevards and cream-stone facades travelers recognize today, while the Eiffel Tower — built as a temporary centerpiece for the 1889 World's Fair — became the symbol nobody wanted torn down. The city's museums hold some of the deepest collections of art anywhere, a legacy of both royal patronage and empire.",
+  "london": "London began as Londinium, a Roman trading post founded around 43 AD on the Thames, and has been rebuilt over itself many times since — most dramatically after the Great Fire of 1666, which cleared the medieval city and gave Christopher Wren his chance to redesign it in stone and dome. Centuries as the capital of a global empire filled it with wealth, immigration, and institutions — Parliament, the Tower, the British Museum — that still define its skyline and its arguments about history.",
+  "rome": "Rome's history stretches back to a legendary founding in 753 BC and the rise of a republic-turned-empire that ruled most of the known Western world. The Colosseum, Forum, and Pantheon are not ruins so much as a city built in layers — medieval churches sit on Roman foundations, and Renaissance palaces reused ancient stone. It has also been the seat of the Catholic Church for nearly two thousand years, giving it a second, parallel history running alongside the empire's.",
+  "florence": "Florence's wealth from wool and banking funded the Renaissance almost single-handedly through the Medici family, who bankrolled Michelangelo, Botticelli, and Brunelleschi's dome — still the largest masonry dome ever built when it was finished in 1436. Walking its center, largely unchanged since the 15th and 16th centuries, is close to walking through the moment Europe reinvented how it painted, built, and thought about the individual.",
+  "venice": "Venice was built on more than a hundred small islands in a lagoon, starting as a refuge from mainland invasions in the 5th century, and grew into a maritime republic that controlled Mediterranean trade for a thousand years. Its wealth came from spices, silk, and glass, and its architecture — a mix of Byzantine, Gothic, and Islamic influence — reflects a city that always looked east as much as west. It has no cars; canals and footbridges still do the work streets do elsewhere.",
+  "barcelona": "Barcelona's roots go back to Roman Barcino, but its personality today owes the most to the late 19th and early 20th centuries, when Catalan modernisme — led by Antoni Gaudí — reshaped the city with organic, sculptural buildings like the still-unfinished Sagrada Família. It's also the historic capital of Catalonia, a region with its own language and a long, sometimes tense relationship with the Spanish state, which shows up in the city's flags and murals as much as its museums.",
+  "istanbul": "Istanbul has been a capital under three names and three empires — Byzantium, then Constantinople under Rome and Byzantium, then Istanbul under the Ottomans after 1453 — sitting exactly on the strait dividing Europe from Asia. The Hagia Sophia, built in 537 AD as a cathedral, later became a mosque and a museum before returning to use as a mosque, a fair summary of a city that keeps rewriting itself while keeping the same skyline of domes and minarets.",
+  "athens": "Athens gave the world democracy, theater, and philosophy in roughly the 5th century BC, a period concentrated enough that the Acropolis, the Agora, and the works of Socrates, Plato, and Aristotle all trace to a single few generations. The city declined for long stretches afterward under Roman, Byzantine, and Ottoman rule before becoming the capital of modern Greece in 1834, which is why ancient marble and 19th-century neoclassicism sit side by side.",
+  "oia": "The villages of Santorini sit on the rim of a caldera formed by one of the largest volcanic eruptions in human history, around 1600 BC — an event some scholars connect to the Atlantis legend and to the collapse of Minoan civilization on nearby Crete. The white-washed, blue-domed architecture is relatively recent, built to reflect heat and withstand wind, and the island has been rebuilt more than once after earthquakes, most recently in 1956.",
+  "fira": "Santorini's caldera towns sit atop the rim of a volcano that erupted catastrophically around 1600 BC, an event that may have inspired the Atlantis myth and reshaped the ancient Aegean world. Fira, the modern capital, rebuilt itself after a severe 1956 earthquake in the same whitewashed, cave-house style that has defined the island for generations.",
+  "prague": "Prague survived the 20th century's wars largely intact, which is why its Gothic, Baroque, and Art Nouveau layers — from Charles Bridge (started 1357) to Prague Castle, in continuous use since the 9th century — are unusually complete for a Central European capital. It was the heart of the Holy Roman Empire under Charles IV in the 14th century, and later a center of the Habsburg empire, the Prague Spring of 1968, and the Velvet Revolution of 1989.",
+  "amsterdam": "Amsterdam's ring of concentric canals, dug in the 17th century during the Dutch Golden Age, was a feat of urban planning built on trade wealth from the Dutch East India Company — the world's first publicly traded corporation. That same century filled the city with the merchant houses and art (Rembrandt, Vermeer) that still define it, while its long tradition of religious tolerance shaped a famously open, pragmatic civic culture.",
+  "reykjavik": "Reykjavik is usually dated to 874 AD, when the Norse settler Ingólfur Arnarson is said to have made it Iceland's first permanent settlement. For most of its history it stayed a small fishing town — the population didn't cross a few thousand until the 20th century — before rapid growth after Iceland's 1944 independence from Denmark turned it into the country's political, cultural, and economic center, all still powered largely by the geothermal energy beneath it.",
+  "marrakech": "Marrakech was founded in 1070 by the Almoravid dynasty as a base for their empire across North Africa and Spain, and its walled medina — a UNESCO World Heritage site — has functioned as a working market and residential quarter for nearly a thousand years since. The Koutoubia Mosque's minaret, finished in the 12th century, set the design template later echoed by Seville's Giralda and Rabat's Hassan Tower.",
+  "cairo": "Cairo as a city dates to 969 AD, but it sits beside monuments far older — the Giza pyramids and Sphinx were already more than two thousand years old when Cairo was founded. As the seat of the Fatimid, Mamluk, and later Ottoman rule in Egypt, it accumulated one of the densest collections of medieval Islamic architecture anywhere, layered on top of a Nile-side geography that has anchored Egyptian civilization for five thousand years.",
+  "wadi musa": "Petra, carved into rose-colored sandstone cliffs by the Nabataeans starting around the 4th century BC, was a wealthy caravan-trade hub controlling incense and spice routes across Arabia. Its famous facade, Al-Khazneh (\"the Treasury\"), is a tomb, not a treasury — the name comes from a legend about hidden riches. Largely abandoned after a 4th-century earthquake and shifting trade routes, it was unknown to the West until 1812 and named a UNESCO World Heritage Site in 1985.",
+  "petra": "Petra was carved into rose-colored sandstone cliffs by the Nabataeans starting around the 4th century BC, growing wealthy as a hub for caravan trade in incense and spices across Arabia. Al-Khazneh, its famous rock-cut facade, is actually a royal tomb — the name \"Treasury\" comes from a later legend about hidden riches. An earthquake and shifting trade routes emptied the city by the 7th century; it stayed largely unknown outside the region until 1812.",
+  "dubai": "Dubai was a modest pearling and trading port on the Gulf until oil revenue, discovered in the 1960s, funded a deliberate transformation into a global business and tourism hub over the following decades. Much of what defines it today — the Burj Khalifa, the man-made Palm islands, the free-trade zones — was built within a single generation, making it one of the fastest urban transformations anywhere in the world.",
+  "jaipur": "Jaipur was founded in 1727 by Maharaja Sawai Jai Singh II, a keen astronomer, and is one of the earliest planned cities in India, laid out on a grid according to principles from an ancient Indian architectural text. Its buildings were painted pink in 1876 to welcome the Prince of Wales, a color the city has kept ever since, earning it the nickname \"the Pink City.\" The Jantar Mantar observatory nearby holds the world's largest stone sundial.",
+  "varanasi": "Varanasi, on the banks of the Ganges, is considered one of the oldest continuously inhabited cities in the world, with a religious history in Hinduism stretching back at least 3,000 years. It's one of Hinduism's seven holiest cities, where pilgrims come to bathe in the river and where cremation ghats have operated for centuries in the belief that dying here brings liberation from the cycle of rebirth.",
+  "bangkok": "Bangkok became Thailand's capital in 1782 when King Rama I moved the royal seat across the Chao Phraya River after the fall of the former capital, Ayutthaya, and modeled the new city's temples and layout partly on the older one. The Grand Palace and Wat Phra Kaew (Temple of the Emerald Buddha) date to that founding era, while the city's canals, once its main transport network, earned it the old nickname \"Venice of the East.\"",
+  "chiang mai": "Chiang Mai was founded in 1296 as the capital of the independent Lanna kingdom, whose distinct architecture, dialect, and Buddhist traditions still separate the region culturally from Bangkok and central Thailand. Its old city is still ringed by a moat and remnants of the original brick walls, and it remains one of the most important centers of northern Thai Buddhism, with hundreds of temples inside a compact historic core.",
+  "hanoi": "Hanoi has been a capital on and off for roughly a thousand years, first as Thang Long under the Ly dynasty in 1010. French colonial rule from the late 19th century added the boulevards, opera house, and villa architecture of the Old Quarter, while the 20th century made it the capital first of French Indochina's resistance and then of a unified Vietnam after 1975 — layers you can trace walking from temple to colonial building to Communist-era monument.",
+  "hoi an": "Hoi An was one of Southeast Asia's most important trading ports from the 15th to 19th centuries, where Chinese, Japanese, Dutch, and other merchants settled and left their mark — the Japanese Covered Bridge, Chinese assembly halls, and centuries-old wooden shophouses all still stand in a historic center preserved almost intact and recognized by UNESCO in 1999. Silk-making and tailoring, trades the town has practiced for centuries, remain central to its economy today.",
+  "siem reap": "Siem Reap is the gateway to Angkor, the capital of the Khmer Empire from roughly the 9th to 15th centuries and, at Angkor Wat, home to the largest religious monument in the world. Built in the early 12th century originally as a Hindu temple to Vishnu before becoming Buddhist, Angkor Wat is only the centerpiece of a much larger complex of temples, reservoirs, and roads that once supported a city of perhaps a million people.",
+  "ubud": "Ubud sits in the highlands of Bali and has been the island's artistic and spiritual heart for centuries, home to royal palaces, hundreds of temples, and a tradition of painting, woodcarving, and dance patronized by Balinese royalty since the 19th century. Balinese Hinduism, distinct from Indian Hinduism and woven with older animist beliefs, shapes daily life here through the small offerings placed on doorsteps and shrines every morning.",
+  "kyoto": "Kyoto was Japan's imperial capital for over a thousand years, from 794 to 1868, and largely escaped bombing in World War II, leaving it with the country's densest concentration of temples, shrines, and traditional wooden architecture — over 1,600 Buddhist temples and 400 Shinto shrines. It remains the center of traditional Japanese arts including geisha culture, tea ceremony, and kaiseki cuisine, all developed and refined here over centuries of imperial and shogunate patronage.",
+  "tokyo": "Tokyo was a small fishing village called Edo until 1603, when it became the seat of the Tokugawa shogunate and grew into one of the world's largest cities within two centuries. Renamed Tokyo (\"Eastern Capital\") when the emperor moved there in 1868, it was largely rebuilt twice in the 20th century — after the 1923 earthquake and after WWII firebombing — which is part of why it's now one of the most modern-looking cities its age anywhere.",
+  "seoul": "Seoul has been a capital city for over 600 years, since the Joseon dynasty established it in 1394, and its five grand palaces — including Gyeongbokgung — date to that founding era, though most were rebuilt after destruction during Japanese invasions and colonial rule. Divided from the North since the Korean War armistice in 1953, it rebuilt itself into one of the world's major economic and cultural capitals within a single generation.",
+  "new york": "New York began as the Dutch trading post New Amsterdam in 1624, seized by the English in 1664 and renamed for the Duke of York. Waves of immigration through Ellis Island from the 1890s to 1920s built much of the city's character, while the 20th century's skyscraper boom — the Chrysler Building, the Empire State Building — turned its skyline into shorthand for modern ambition itself.",
+  "new york city": "New York began as the Dutch trading post New Amsterdam in 1624, seized by the English in 1664 and renamed for the Duke of York. Waves of immigration through Ellis Island from the 1890s to 1920s built much of the city's character, while the 20th century's skyscraper boom — the Chrysler Building, the Empire State Building — turned its skyline into shorthand for modern ambition itself.",
+  "san francisco": "San Francisco was a small settlement until the 1848 Gold Rush turned it into a boomtown almost overnight, with its population exploding from around 1,000 to 25,000 in a single year. Rebuilt after the devastating 1906 earthquake and fire, it later became a center of counterculture in the 1960s and of technology from the 1970s onward — the Golden Gate Bridge, finished in 1937, remains the city's clearest symbol of that early engineering ambition.",
+  "mexico city": "Mexico City is built directly on top of Tenochtitlan, the Aztec capital founded around 1325 on an island in Lake Texcoco, which the Spanish razed and rebuilt after conquering it in 1521. The lake was gradually drained over centuries, which is why the city sinks unevenly today, and the Zócalo, its central square, sits on the ruins of the Aztec Templo Mayor, parts of which are still being excavated beneath colonial-era buildings.",
+  "cusco": "Cusco was the capital of the Inca Empire, laid out — according to tradition — in the shape of a puma, with massive stone walls whose precision-cut blocks still fit together without mortar. It's the traditional gateway to Machu Picchu, the Inca citadel built around 1450 in the Andes and abandoned within a century, likely during the Spanish conquest, before being brought to wider international attention in 1911.",
+  "aguas calientes": "This small town below Machu Picchu exists almost entirely to serve travelers to the Inca citadel above it, built around 1450 as a royal estate for the emperor Pachacuti and abandoned roughly a century later, likely around the time of the Spanish conquest. Its remote mountainside position may be exactly why the Spanish never found it — it was never \"lost\" to the local Quechua population, but it stayed largely unknown internationally until it was brought to wider attention in 1911.",
+  "rio de janeiro": "Rio de Janeiro was Brazil's capital for nearly two centuries, until 1960, and its Christ the Redeemer statue, completed in 1931 atop Corcovado mountain, became a 20th-century symbol of the city's identity. Founded by the Portuguese in 1565, it later briefly became the seat of the entire Portuguese empire when the royal family fled Napoleon's invasion of Portugal in 1808 — one of very few times a European monarchy has ruled from the Americas.",
+  "buenos aires": "Buenos Aires was founded twice by the Spanish — first in 1536, abandoned after conflict with indigenous groups, then refounded in 1580 — before growing into one of the wealthiest cities in the world by the early 20th century on the back of beef and grain exports, which is why its center is filled with grand European-style architecture. It's also the birthplace of tango, which emerged in the working-class port neighborhoods in the late 1800s.",
+  "cape town": "Cape Town began in 1652 as a supply station for Dutch East India Company ships rounding the Cape on the route to Asia, making it one of the oldest colonial settlements in sub-Saharan Africa. Table Mountain, overlooking the city, is among the oldest mountains in the world, and nearby Robben Island, where Nelson Mandela was imprisoned for 18 years, anchors the city's more recent history of apartheid and its end in the 1990s.",
+  "sydney": "Sydney began in 1788 as a British penal colony at Sydney Cove, the first European settlement in Australia, on land the Gadigal people had lived on for tens of thousands of years. The Sydney Opera House, finished in 1973 after a famously troubled 14-year construction, and the Harbour Bridge, opened in 1932, are relatively recent additions to a much longer history that starts with the world's oldest continuous human culture.",
+  "queenstown": "Queenstown grew out of a gold rush in the 1860s in New Zealand's Otago region, and the surrounding Southern Alps and lake country have since made it the country's adventure-tourism capital — it's often credited as the birthplace of commercial bungy jumping in 1988. The area was also long used by Māori travelers as a route to greenstone (pounamu) sources, a material central to Māori culture and craft."
+};
+
+function normalizeKey(s){
+  return (s||"").toLowerCase().trim()
+    .replace(/^(the|st\.?|saint)\s+/,"")
+    .replace(/[^a-z0-9\s]/g,"")
+    .trim();
+}
+
+function lookupNarrative(city){
+  const key = normalizeKey(city);
+  if(NARRATIVES[key]) return {text: NARRATIVES[key], sourced:true};
+  return {
+    text: `Wayfarer doesn't have a pre-written history for ${city || "this place"} yet. Add your own notes below, or ask Claude (or any research assistant) to write a short history of ${city || "this location"} and paste it in — it'll be saved with the rest of your diary.`,
+    sourced:false
+  };
+}
+
+/* =========================================================================
+   STATE
+   ========================================================================= */
+let state = {
+  theme: "vintage",
+  chapters: []  // {id, place, country, lat, lon, dateStart, dateEnd, narrative, sourced, note, photos:[{id, dataUrl, name, takenAt}]}
+};
+
+function uid(){ return 'c' + Math.random().toString(36).slice(2,10); }
+
+function fmtCoord(lat, lon){
+  const ns = lat >= 0 ? 'N' : 'S';
+  const ew = lon >= 0 ? 'E' : 'W';
+  return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(lon).toFixed(2)}°${ew}`;
+}
+
+/* =========================================================================
+   BOOTSTRAP FROM EMBEDDED STATE (for reopened exported diaries)
+   ========================================================================= */
+function loadEmbeddedState(){
+  const tag = document.getElementById('diary-state');
+  try{
+    const parsed = JSON.parse(tag.textContent || "{}");
+    if(parsed && parsed.chapters && parsed.chapters.length){
+      state = parsed;
+      if(state.theme) applyTheme(state.theme, false);
+    }
+  }catch(e){ /* ignore, start fresh */ }
+}
+
+/* =========================================================================
+   THEME
+   ========================================================================= */
+function applyTheme(name, save){
+  document.body.setAttribute('data-theme', name);
+  document.querySelectorAll('.swatch').forEach(s=>{
+    s.classList.toggle('active', s.dataset.theme === name);
+  });
+  state.theme = name;
+  if(save !== false) render();
+}
+document.querySelectorAll('.swatch').forEach(s=>{
+  s.addEventListener('click', ()=> applyTheme(s.dataset.theme));
+});
+
+/* =========================================================================
+   EXIF + GEOCODING
+   ========================================================================= */
+// Minimal, dependency-free EXIF parser: pulls GPS coordinates and the
+// original capture date/time straight out of the JPEG's APP1 segment.
+// No CDN library needed, and no network required — works fully offline.
+function parseExifBuffer(buffer){
+  try{
+    const view = new DataView(buffer);
+    if(view.getUint16(0) !== 0xFFD8) return null; // not a JPEG
+
+    let offset = 2, exifStart = null, exifSize = 0;
+    while(offset < view.byteLength - 4){
+      const marker = view.getUint16(offset);
+      if((marker & 0xFF00) !== 0xFF00) break;
+      if(marker === 0xFFE1){
+        exifSize = view.getUint16(offset + 2);
+        if(view.getUint32(offset + 4) === 0x45786966 && view.getUint16(offset + 8) === 0x0000){
+          exifStart = offset + 10;
+        }
+        break;
+      }
+      if(marker === 0xFFDA) break; // start of scan, no more markers before image data
+      offset += 2 + view.getUint16(offset + 2);
+    }
+    if(exifStart == null) return null;
+
+    const tiffStart = exifStart;
+    const little = view.getUint16(tiffStart) === 0x4949; // 'II' little-endian, 'MM' big-endian
+    const u16 = (o)=> view.getUint16(o, little);
+    const u32 = (o)=> view.getUint32(o, little);
+    const rational = (o)=>{ const d = u32(o+4); return d===0 ? 0 : u32(o)/d; };
+
+    function readIFD(ifdOffset){
+      const entries = {};
+      const count = u16(ifdOffset);
+      for(let i=0;i<count;i++){
+        const entryOffset = ifdOffset + 2 + i*12;
+        entries[u16(entryOffset)] = {
+          type: u16(entryOffset+2),
+          numValues: u32(entryOffset+4),
+          valueOffset: entryOffset+8
+        };
+      }
+      return entries;
+    }
+    function getASCII(entry){
+      const len = entry.numValues;
+      const addr = len <= 4 ? entry.valueOffset : tiffStart + u32(entry.valueOffset);
+      let s = '';
+      for(let i=0;i<len-1;i++) s += String.fromCharCode(view.getUint8(addr+i));
+      return s;
+    }
+    function getRationalArray(entry){
+      const addr = tiffStart + u32(entry.valueOffset);
+      const arr = [];
+      for(let i=0;i<entry.numValues;i++) arr.push(rational(addr + i*8));
+      return arr;
+    }
+    function getRefChar(entry){
+      if(entry.numValues <= 4) return String.fromCharCode(view.getUint8(entry.valueOffset));
+      return getASCII(entry);
+    }
+
+    const ifd0Offset = u32(tiffStart + 4);
+    const ifd0 = readIFD(tiffStart + ifd0Offset);
+    let lat=null, lon=null, takenAt=null;
+
+    if(ifd0[0x8825]){ // GPS IFD pointer
+      const gps = readIFD(tiffStart + u32(ifd0[0x8825].valueOffset));
+      if(gps[1] && gps[2] && gps[3] && gps[4]){
+        const latDms = getRationalArray(gps[2]);
+        const lonDms = getRationalArray(gps[4]);
+        lat = latDms[0] + latDms[1]/60 + latDms[2]/3600;
+        if(getRefChar(gps[1]) === 'S') lat = -lat;
+        lon = lonDms[0] + lonDms[1]/60 + lonDms[2]/3600;
+        if(getRefChar(gps[3]) === 'W') lon = -lon;
+      }
+    }
+    if(ifd0[0x8769]){ // Exif sub-IFD pointer
+      const exifIfd = readIFD(tiffStart + u32(ifd0[0x8769].valueOffset));
+      if(exifIfd[0x9003]) takenAt = getASCII(exifIfd[0x9003]); // DateTimeOriginal
+    }
+    if(!takenAt && ifd0[0x0132]) takenAt = getASCII(ifd0[0x0132]); // DateTime fallback
+
+    return {lat, lon, takenAt};
+  }catch(e){
+    return null;
+  }
+}
+
+function readExif(file){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const parsed = parseExifBuffer(e.target.result);
+      let takenAtIso = null;
+      if(parsed && parsed.takenAt){
+        const m = /(\d{4}):(\d{2}):(\d{2})\s(\d{2}):(\d{2}):(\d{2})/.exec(parsed.takenAt);
+        if(m) takenAtIso = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]).toISOString();
+      }
+      resolve({
+        lat: parsed ? parsed.lat : null,
+        lon: parsed ? parsed.lon : null,
+        takenAt: takenAtIso
+      });
+    };
+    reader.onerror = function(){ resolve({lat:null, lon:null, takenAt:null}); };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// Downscale + get a dataURL we'll actually store (keeps exported file size sane)
+function downscaleToDataUrl(file, maxDim){
+  return new Promise((resolve)=>{
+    const reader = new FileReader();
+    reader.onload = function(e){
+      const img = new Image();
+      img.onload = function(){
+        let {width, height} = img;
+        if(width > maxDim || height > maxDim){
+          if(width > height){ height = Math.round(height * maxDim/width); width = maxDim; }
+          else { width = Math.round(width * maxDim/height); height = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = function(){ resolve(e.target.result); };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+const geocodeCache = {};
+async function reverseGeocode(lat, lon){
+  const key = lat.toFixed(2) + "," + lon.toFixed(2);
+  if(geocodeCache[key]) return geocodeCache[key];
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`, {
+      headers: {'Accept':'application/json'}
+    });
+    const data = await res.json();
+    const addr = data.address || {};
+    const place = addr.city || addr.town || addr.village || addr.municipality || addr.county || data.name || "Unknown place";
+    const country = addr.country || "";
+    const result = {place, country};
+    geocodeCache[key] = result;
+    return result;
+  }catch(e){
+    return {place:"Unknown place", country:""};
+  }
+}
+
+async function forwardGeocode(query){
+  try{
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(query)}&limit=1`, {
+      headers: {'Accept':'application/json'}
+    });
+    const data = await res.json();
+    if(data && data[0]) return {lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon)};
+  }catch(e){}
+  return null;
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+/* =========================================================================
+   PHOTO INGEST
+   ========================================================================= */
+function setLoading(on, text){
+  document.getElementById('loading-row').style.display = on ? 'flex' : 'none';
+  if(text) document.getElementById('loading-text').textContent = text;
+}
+
+async function ingestFiles(fileList){
+  const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+  if(!files.length) return;
+  setLoading(true, `Reading location data from ${files.length} photo${files.length>1?'s':''}…`);
+
+  const unsorted = [];
+  let processed = 0;
+
+  for(const file of files){
+    const [exif, dataUrl] = await Promise.all([
+      readExif(file),
+      downscaleToDataUrl(file, 1600)
+    ]);
+    processed++;
+    setLoading(true, `Processing photo ${processed} of ${files.length}…`);
+
+    const photo = {
+      id: uid(),
+      dataUrl,
+      name: file.name,
+      takenAt: exif.takenAt,
+      lat: exif.lat,
+      lon: exif.lon
+    };
+
+    if(exif.lat != null && exif.lon != null){
+      unsorted.push(photo);
+    } else {
+      addPhotoToChapter(getOrCreateChapter(null, null, "Unsorted", ""), photo);
+    }
+  }
+
+  // group geotagged photos by rounded coords, then reverse-geocode each group (rate-limited)
+  const groups = {};
+  unsorted.forEach(p=>{
+    const gkey = p.lat.toFixed(1) + "," + p.lon.toFixed(1);
+    (groups[gkey] = groups[gkey] || []).push(p);
+  });
+
+  const gkeys = Object.keys(groups);
+  for(let i=0;i<gkeys.length;i++){
+    const group = groups[gkeys[i]];
+    setLoading(true, `Looking up location ${i+1} of ${gkeys.length}…`);
+    const first = group[0];
+    const {place, country} = await reverseGeocode(first.lat, first.lon);
+    const chapter = getOrCreateChapter(first.lat, first.lon, place, country);
+    group.forEach(p => addPhotoToChapter(chapter, p));
+    if(i < gkeys.length - 1) await sleep(1100); // respect Nominatim's ~1req/sec policy
+  }
+
+  setLoading(false);
+  document.getElementById('hero-section').style.display = state.chapters.length ? 'none' : 'block';
+  render();
+}
+
+function getOrCreateChapter(lat, lon, place, country){
+  // Places that failed to resolve to a real name (geocoding offline/rate-limited)
+  // must NOT merge just because they share the label "Unknown place" — that
+  // would silently combine photos from genuinely different locations. Fall
+  // back to matching by rounded coordinates in that case instead.
+  const isUnresolved = !place || place === "Unknown place";
+  const matchKey = isUnresolved
+    ? `unknown|${lat!=null ? lat.toFixed(1) : 'x'}|${lon!=null ? lon.toFixed(1) : 'x'}`
+    : `${place}|${country}`;
+
+  let chapter = state.chapters.find(c => c.matchKey === matchKey);
+  if(!chapter){
+    const {text, sourced} = lookupNarrative(place);
+    chapter = {
+      id: uid(), matchKey, place, country, lat, lon,
+      dateStart:null, dateEnd:null,
+      narrative:text, sourced, note:"",
+      photos: []
+    };
+    state.chapters.push(chapter);
+  }
+  return chapter;
+}
+
+function addPhotoToChapter(chapter, photo){
+  chapter.photos.push(photo);
+  if(photo.takenAt){
+    if(!chapter.dateStart || photo.takenAt < chapter.dateStart) chapter.dateStart = photo.takenAt;
+    if(!chapter.dateEnd || photo.takenAt > chapter.dateEnd) chapter.dateEnd = photo.takenAt;
+  }
+}
+
+/* =========================================================================
+   RENDER
+   ========================================================================= */
+function fmtDateRange(a,b){
+  if(!a) return "Date unknown";
+  const da = new Date(a), db = b ? new Date(b) : null;
+  const opts = {month:'short', day:'numeric', year:'numeric'};
+  if(!db || a===b) return da.toLocaleDateString(undefined, opts);
+  return da.toLocaleDateString(undefined, opts) + " – " + db.toLocaleDateString(undefined, opts);
+}
+
+function sortedChapters(){
+  return [...state.chapters].sort((a,b)=>{
+    const da = a.dateStart || "9999";
+    const db = b.dateStart || "9999";
+    return da.localeCompare(db);
+  });
+}
+
+function render(){
+  const hasChapters = state.chapters.length > 0;
+  document.getElementById('hero-section').style.display = hasChapters ? 'none' : 'block';
+  document.getElementById('toolbar').style.display = hasChapters ? 'flex' : 'none';
+  document.getElementById('overview-map').style.display = hasChapters ? 'block' : 'none';
+  document.getElementById('stats-row').style.display = hasChapters ? 'flex' : 'none';
+
+  renderStats();
+  try{ renderOverviewMap(); }catch(e){ console.warn('Overview map failed to render:', e); }
+  renderChapters();
+  persistEmbeddedState();
+}
+
+function estimatedSizeBytes(){
+  // Rough but honest estimate of what an export will weigh: dominated almost
+  // entirely by the base64 photo data sitting in state.chapters[].photos[].dataUrl.
+  return new Blob([JSON.stringify(state)]).size;
+}
+
+function fmtBytes(bytes){
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(0) + ' KB';
+  if(bytes < 1024*1024*1024) return (bytes/(1024*1024)).toFixed(1) + ' MB';
+  return (bytes/(1024*1024*1024)).toFixed(2) + ' GB';
+}
+
+function renderStats(){
+  const row = document.getElementById('stats-row');
+  const totalPhotos = state.chapters.reduce((s,c)=>s+c.photos.length,0);
+  const countries = new Set(state.chapters.map(c=>c.country).filter(Boolean));
+  const sizeBytes = estimatedSizeBytes();
+  const big = sizeBytes > 300*1024*1024; // >300MB — flag it, browsers can struggle building/downloading blobs this size
+  row.innerHTML = `
+    <div class="stat"><b>${state.chapters.length}</b><span>Locations</span></div>
+    <div class="stat"><b>${countries.size}</b><span>Countries</span></div>
+    <div class="stat"><b>${totalPhotos}</b><span>Photos</span></div>
+    <div class="stat" style="${big ? 'border-color:var(--accent);' : ''}">
+      <b style="${big ? 'color:var(--accent);' : ''}">${fmtBytes(sizeBytes)}</b><span>Diary size</span>
+    </div>
+  `;
+  if(big){
+    let warn = document.getElementById('size-warning');
+    if(!warn){
+      warn = document.createElement('div');
+      warn.id = 'size-warning';
+      warn.className = 'note';
+      warn.style.maxWidth = '520px';
+      warn.style.margin = '10px auto 0';
+      row.parentElement.insertBefore(warn, row.nextSibling);
+    }
+    warn.textContent = `This diary is getting large (${fmtBytes(sizeBytes)}) because every photo is embedded in full so the file works on its own with no server. Exports this size can be slow to generate and may strain your browser's memory. Consider trimming photos per location, or splitting the trip into a few smaller diaries.`;
+  } else {
+    document.getElementById('size-warning')?.remove();
+  }
+}
+
+// Projects lat/lon onto a simple equirectangular grid and draws it as inline
+// SVG. No tile server, no external image requests — this always renders,
+// including inside sandboxed previews that block third-party network calls.
+function renderOverviewMap(){
+  const el = document.getElementById('overview-map');
+  const pinned = sortedChapters().filter(c => c.lat != null && c.lon != null);
+  if(!state.chapters.length){ el.innerHTML=''; return; }
+
+  const W = 1000, H = 500, PAD = 20;
+  const project = (lat, lon) => ({
+    x: PAD + (lon + 180) / 360 * (W - PAD*2),
+    y: PAD + (90 - lat) / 180 * (H - PAD*2)
+  });
+
+  let gridLines = '';
+  for(let lon=-180; lon<=180; lon+=30){
+    const p = project(0, lon);
+    gridLines += `<line class="wm-grid" x1="${p.x}" y1="${PAD}" x2="${p.x}" y2="${H-PAD}"/>`;
+  }
+  for(let lat=-60; lat<=60; lat+=30){
+    const p = project(lat, 0);
+    gridLines += `<line class="wm-grid" x1="${PAD}" y1="${p.y}" x2="${W-PAD}" y2="${p.y}"/>`;
+  }
+  const eq = project(0,0);
+  gridLines += `<line class="wm-equator" x1="${PAD}" y1="${eq.y}" x2="${W-PAD}" y2="${eq.y}"/>`;
+
+  let pins = '';
+  pinned.forEach((c, i) => {
+    const p = project(c.lat, c.lon);
+    const labelAbove = p.y > 60;
+    pins += `
+      <g class="wm-pin" data-chapter="${c.id}">
+        <text x="${p.x}" y="${labelAbove ? p.y - 12 : p.y + 24}" text-anchor="middle">${escapeHtml(c.place)}</text>
+        <circle cx="${p.x}" cy="${p.y}" r="7"/>
+        <text x="${p.x}" y="${p.y+4}" text-anchor="middle" font-size="9" fill="#fff" style="pointer-events:none;">${i+1}</text>
+      </g>`;
+  });
+
+  el.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+      <rect x="${PAD}" y="${PAD}" width="${W-PAD*2}" height="${H-PAD*2}" fill="none" stroke="var(--line)"/>
+      ${gridLines}
+      ${pins}
+    </svg>
+    <div class="wm-caption">${pinned.length ? 'A simplified map of everywhere you\'ve been — click a pin to jump to that chapter.' : 'Add a location with GPS data to see it plotted here.'}</div>
+  `;
+  el.querySelectorAll('.wm-pin').forEach(g=>{
+    g.addEventListener('click', ()=>{
+      document.getElementById('chap-'+g.dataset.chapter)?.scrollIntoView({behavior:'smooth', block:'center'});
+    });
+  });
+}
+
+function escapeHtml(s){
+  return (s||"").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderChapters(){
+  const container = document.getElementById('chapters');
+  container.innerHTML = "";
+  sortedChapters().forEach(chapter=>{
+    container.appendChild(chapterEl(chapter));
+  });
+}
+
+function chapterEl(chapter){
+  const wrap = document.createElement('div');
+  wrap.className = 'chapter';
+  wrap.id = 'chap-'+chapter.id;
+  const isUnresolved = chapter.place === "Unsorted" || chapter.place === "Unknown place";
+
+  // ---- HERO: lead photo (or a quiet placeholder) with the title set on it ----
+  const hero = document.createElement('div');
+  const heroPhoto = chapter.photos[0];
+  hero.className = 'chapter-hero' + (heroPhoto ? '' : ' no-photo');
+
+  const subParts = [fmtDateRange(chapter.dateStart, chapter.dateEnd), `${chapter.photos.length} photo${chapter.photos.length!==1?'s':''}`];
+  if(isUnresolved && chapter.lat != null) subParts.push(fmtCoord(chapter.lat, chapter.lon));
+
+  hero.innerHTML = `
+    ${heroPhoto ? `<img src="${heroPhoto.dataUrl}" alt="">` : ''}
+    <div class="hero-overlay">
+      <div class="hero-eyebrow">Chapter</div>
+      <h3 class="hero-place">${escapeHtml(chapter.place)}${chapter.country ? ", " + escapeHtml(chapter.country) : ""}</h3>
+      <div class="hero-sub">${subParts.join(' · ')}</div>
+    </div>
+    <button class="hero-remove" title="Remove this chapter">×</button>
+  `;
+  hero.querySelector('.hero-remove').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    state.chapters = state.chapters.filter(c=>c.id!==chapter.id);
+    render();
+  });
+  wrap.appendChild(hero);
+
+  const body = document.createElement('div');
+  body.className = 'chapter-body';
+
+  // LEFT: narrative + note (+ manual location tag form if unresolved)
+  const left = document.createElement('div');
+  const narrativeDiv = document.createElement('div');
+  narrativeDiv.className = 'narrative';
+  narrativeDiv.innerHTML = `<div>${chapter.narrative}</div>` +
+    (chapter.sourced ? `<div class="narrative-source">History drafted from general reference facts — worth a quick check before you publish or print.</div>` : ``);
+  left.appendChild(narrativeDiv);
+
+  if(isUnresolved){
+    const tagForm = document.createElement('div');
+    tagForm.className = 'tag-form';
+    tagForm.innerHTML = `
+      <input type="text" placeholder="Where were these taken? e.g. Kyoto, Japan" class="tag-input">
+      <button class="btn primary tag-btn">Set Location</button>
+    `;
+    tagForm.querySelector('.tag-btn').addEventListener('click', async ()=>{
+      const val = tagForm.querySelector('.tag-input').value.trim();
+      if(!val) return;
+      const parts = val.split(',');
+      const place = parts[0].trim();
+      const country = parts.slice(1).join(',').trim();
+      setLoading(true, `Locating ${place}…`);
+      const coords = await forwardGeocode(val);
+      setLoading(false);
+      const newChapter = getOrCreateChapter(coords?coords.lat:null, coords?coords.lon:null, place, country);
+      chapter.photos.forEach(p=>addPhotoToChapter(newChapter, p));
+      state.chapters = state.chapters.filter(c=>c.id!==chapter.id);
+      render();
+    });
+    left.appendChild(tagForm);
+  }
+
+  const noteDiv = document.createElement('div');
+  noteDiv.className = 'personal-note';
+  noteDiv.innerHTML = `<label>Your notes</label>`;
+  const ta = document.createElement('textarea');
+  ta.placeholder = "What do you remember? What did you eat, who were you with, what surprised you...";
+  ta.value = chapter.note || "";
+  ta.addEventListener('input', ()=>{ chapter.note = ta.value; persistEmbeddedState(); });
+  noteDiv.appendChild(ta);
+  left.appendChild(noteDiv);
+
+  body.appendChild(left);
+
+  // RIGHT: location card + photo grid
+  const right = document.createElement('div');
+  right.className = 'side-col';
+  if(chapter.lat != null && chapter.lon != null){
+    const mapDiv = document.createElement('div');
+    mapDiv.className = 'mini-map';
+    mapDiv.innerHTML = `<div class="mm-pin"></div><div class="mm-coords">${fmtCoord(chapter.lat, chapter.lon)}</div>`;
+    right.appendChild(mapDiv);
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'photo-grid';
+  chapter.photos.forEach(photo=>{
+    const fig = document.createElement('figure');
+    const img = document.createElement('img');
+    img.src = photo.dataUrl;
+    img.loading = 'lazy';
+    fig.appendChild(img);
+    fig.addEventListener('click', ()=> openLightbox(photo, chapter));
+    grid.appendChild(fig);
+  });
+
+  const addTile = document.createElement('div');
+  addTile.className = 'add-photo-tile';
+  addTile.textContent = '+';
+  addTile.title = 'Add more photos to this location';
+  addTile.addEventListener('click', ()=>{
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
+    inp.addEventListener('change', async (e)=>{
+      setLoading(true, 'Adding photos…');
+      for(const file of Array.from(e.target.files)){
+        const dataUrl = await downscaleToDataUrl(file, 1600);
+        addPhotoToChapter(chapter, {id:uid(), dataUrl, name:file.name, takenAt:null, lat:chapter.lat, lon:chapter.lon});
+      }
+      setLoading(false);
+      render();
+    });
+    inp.click();
+  });
+  grid.appendChild(addTile);
+
+  right.appendChild(grid);
+  body.appendChild(right);
+
+  wrap.appendChild(body);
+  return wrap;
+}
+
+function openLightbox(photo, chapter){
+  document.getElementById('lightbox-img').src = photo.dataUrl;
+  document.getElementById('lightbox-cap').textContent = `${chapter.place}${chapter.country?', '+chapter.country:''}${photo.takenAt ? ' — ' + new Date(photo.takenAt).toLocaleDateString() : ''}`;
+  document.getElementById('lightbox').classList.add('open');
+}
+document.getElementById('lightbox-close').addEventListener('click', ()=>{
+  document.getElementById('lightbox').classList.remove('open');
+});
+document.getElementById('lightbox').addEventListener('click', (e)=>{
+  if(e.target.id === 'lightbox') document.getElementById('lightbox').classList.remove('open');
+});
+
+/* =========================================================================
+   PERSISTENCE: embed state in the page + JSON save/load + HTML export
+   ========================================================================= */
+function persistEmbeddedState(){
+  document.getElementById('diary-state').textContent = JSON.stringify(state);
+}
+
+function downloadBlob(content, filename, mime){
+  const blob = new Blob([content], {type: mime});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 5000);
+}
+
+function exportJson(){
+  persistEmbeddedState();
+  downloadBlob(JSON.stringify(state), 'wayfarer-diary.json', 'application/json');
+}
+
+function exportHtml(){
+  persistEmbeddedState();
+  // IMPORTANT: don't just serialize the live page. The live DOM already
+  // contains a rendered copy of every photo (as <img src="data:..."> in the
+  // photo grids) *in addition to* the same photo bytes sitting in the
+  // #diary-state JSON blob used to restore the diary on reopen. Serializing
+  // the live page directly would embed every photo twice, roughly doubling
+  // the download for no reason. Instead, clone the document, strip out the
+  // regenerable DOM (chapters, map, lightbox preview), and serialize that —
+  // render() rebuilds all of it from #diary-state the moment the exported
+  // file is opened, so nothing is actually lost.
+  const clone = document.documentElement.cloneNode(true);
+  const chaptersClone = clone.querySelector('#chapters');
+  if(chaptersClone) chaptersClone.innerHTML = '';
+  const mapClone = clone.querySelector('#overview-map');
+  if(mapClone) mapClone.innerHTML = '';
+  const lightboxImg = clone.querySelector('#lightbox-img');
+  if(lightboxImg) lightboxImg.setAttribute('src', '');
+  const fullHtml = "<!DOCTYPE html>\n" + clone.outerHTML;
+  downloadBlob(fullHtml, 'my-travel-diary.html', 'text/html');
+}
+
+document.getElementById('import-json-input').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const parsed = JSON.parse(ev.target.result);
+      if(parsed && parsed.chapters){
+        state = parsed;
+        applyTheme(state.theme || 'vintage', false);
+        render();
+      }
+    }catch(err){ alert('Could not read that file — is it a Wayfarer diary export?'); }
+  };
+  reader.readAsText(file);
+});
+
+/* =========================================================================
+   WIRE UP UI
+   ========================================================================= */
+const fileInput = document.getElementById('file-input-hidden');
+function triggerFilePicker(){ fileInput.click(); }
+
+document.getElementById('btn-add-photos').addEventListener('click', triggerFilePicker);
+document.getElementById('btn-add-photos-2').addEventListener('click', triggerFilePicker);
+document.getElementById('dropzone').addEventListener('click', triggerFilePicker);
+
+fileInput.addEventListener('change', (e)=> ingestFiles(e.target.files));
+
+const dz = document.getElementById('dropzone');
+['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev, (e)=>{ e.preventDefault(); dz.classList.add('drag'); }));
+['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, (e)=>{ e.preventDefault(); dz.classList.remove('drag'); }));
+dz.addEventListener('drop', (e)=>{ if(e.dataTransfer.files.length) ingestFiles(e.dataTransfer.files); });
+
+document.getElementById('btn-export-json').addEventListener('click', exportJson);
+document.getElementById('btn-export-json-2').addEventListener('click', exportJson);
+document.getElementById('btn-export-html').addEventListener('click', exportHtml);
+document.getElementById('btn-export-html-2').addEventListener('click', exportHtml);
+document.getElementById('btn-import-json').addEventListener('click', ()=> document.getElementById('import-json-input').click());
+
+document.getElementById('btn-add-chapter').addEventListener('click', async ()=>{
+  const val = prompt("Location name (e.g. 'Kyoto, Japan'):");
+  if(!val) return;
+  const parts = val.split(',');
+  const place = parts[0].trim();
+  const country = parts.slice(1).join(',').trim();
+  setLoading(true, `Locating ${place}…`);
+  const coords = await forwardGeocode(val);
+  setLoading(false);
+  getOrCreateChapter(coords?coords.lat:null, coords?coords.lon:null, place, country);
+  render();
+});
+
+document.getElementById('btn-open-gphotos').addEventListener('click', ()=>{
+  const link = document.getElementById('gphotos-link').value.trim();
+  if(!link){ alert('Paste your Google Photos album link first.'); return; }
+  window.open(link, '_blank', 'noopener');
+});
+
+document.getElementById('btn-fetch-gphotos-img').addEventListener('click', async ()=>{
+  const link = document.getElementById('gphotos-img-link').value.trim();
+  if(!link) return;
+  setLoading(true, 'Trying to import from Google Photos…');
+  try{
+    const res = await fetch(link, {mode:'cors'});
+    if(!res.ok) throw new Error('fetch failed');
+    const blob = await res.blob();
+    const file = new File([blob], 'gphotos-import.jpg', {type: blob.type || 'image/jpeg'});
+    await ingestFiles([file]);
+    document.getElementById('gphotos-img-link').value = '';
+  }catch(e){
+    setLoading(false);
+    alert("Google didn't allow a direct import of that link (this is normal — Google Photos blocks cross-site image fetching for most links). Please download the photo instead and drag it into the box above; that also preserves the original location data.");
+  }
+});
+
+/* =========================================================================
+   INIT
+   ========================================================================= */
+loadEmbeddedState();
+applyTheme(state.theme || 'vintage', false);
+render();
+
+})();
+</script>
+</body>
+</html>
