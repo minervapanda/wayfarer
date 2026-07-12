@@ -363,25 +363,43 @@
 .bk-voice { flex: 0 0 auto; margin: 6px 0 2px; }
 .bk-voice:empty { display: none; }
 
-/* ================= photo collage ================= */
+/* ================= photo collage =================
+   Orientation-aware frames (2026-07-12): book.js stamps each .bk-snap with
+   data-orient="portrait|landscape|square" from the stored blob {w,h}
+   (aspect = w/h; portrait < 0.85, landscape > 1.18, else square) and the
+   collage with data-mix = the orient initials in display order ("pl", "lls"…).
+   The photo AREA takes the class frame — portrait 3/4, landscape 4/3,
+   square 1/1 — so cover-cropping trims like a real print, never a butcher.
+   Prints are sized by a --snap-h HEIGHT in cqw (1cqw = 1% of the collage's
+   width; the collage is an inline-size container) so every layout's total
+   height is deterministic and can never push the title/story off the face. */
 
 .bk-collage {
   position: relative;
   flex: 0 0 auto;
   margin: 2px 0 10px;
+  container-type: inline-size;
 }
 .bk-snap {
+  --frame: 1 / 1;                          /* photo-area aspect, per data-orient */
   position: relative;
   margin: 0;
   background: #fff;
-  padding: 4% 4% 6%;
+  padding: 1.6cqw 1.6cqw 2.6cqw;           /* polaroid chrome, uniform per collage */
   box-shadow: 0 2px 8px rgba(40, 28, 14, 0.28);
   border-radius: 2px;
 }
+.bk-snap[data-orient="portrait"]  { --frame: 3 / 4; }
+.bk-snap[data-orient="landscape"] { --frame: 4 / 3; }
+.bk-snap img,
+.bk-snap .bk-snap-missing {
+  display: block;
+  height: var(--snap-h, 30cqw);
+  width: auto;
+  aspect-ratio: var(--frame);
+  object-fit: cover;                       /* tiny in-frame trims only — never stretch/letterbox */
+}
 .bk-snap img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
   background:
     linear-gradient(110deg, var(--paper-edge) 30%, color-mix(in srgb, var(--paper-edge) 55%, #fff) 50%, var(--paper-edge) 70%);
   background-size: 220% 100%;
@@ -389,11 +407,12 @@
 }
 .bk-snap img.is-loaded { animation: none; background: var(--paper-edge); }
 @keyframes bk-shimmer { to { background-position-x: -220%; } }
-.bk-snap-missing {
+.bk-snap .bk-snap-missing {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
+  overflow: hidden;
+  text-align: center;
   font-family: var(--font-ui);
   font-size: 10px;
   color: var(--ink-soft);
@@ -416,7 +435,7 @@
 }
 
 /* black photo corners */
-.bk-corners { padding: 5%; background: transparent; box-shadow: none; }
+.bk-corners { padding: 1.8cqw; background: transparent; box-shadow: none; }
 .bk-corners img { box-shadow: 0 2px 8px rgba(40, 28, 14, 0.28); }
 .bk-corners::before, .bk-corners::after,
 .bk-corners .bk-corner-b::before, .bk-corners .bk-corner-b::after {
@@ -434,56 +453,93 @@
 .bk-corners .bk-corner-b::before { bottom: 0; left: 0; top: auto; clip-path: polygon(0 0, 100% 100%, 0 100%); }
 .bk-corners .bk-corner-b::after  { bottom: 0; right: 0; top: auto; clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 
-/* --- curated layouts by photo count --- */
+/* --- curated layouts by photo count & mix --- */
+
+/* n=1 hero: the frame follows the photo — landscape wider + lower,
+   portrait narrower + taller, square in between */
 .bk-collage[data-n="1"] { display: flex; justify-content: center; }
-.bk-collage[data-n="1"] .bk-snap { width: 62%; aspect-ratio: 4 / 3.4; transform: rotate(-1.6deg); }
-
-.bk-collage[data-n="2"] {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4%;
-  padding: 0 2%;
+.bk-collage[data-n="1"] .bk-snap {
+  --snap-h: 40cqw;
+  padding: 2.2cqw 2.2cqw 3.4cqw;
+  transform: rotate(-1.6deg);
 }
-.bk-collage[data-n="2"] .bk-snap { aspect-ratio: 1 / 1.02; }
-.bk-collage[data-n="2"] .bk-snap:nth-child(1) { transform: rotate(-2.4deg) translateY(2%); }
-.bk-collage[data-n="2"] .bk-snap:nth-child(2) { transform: rotate(1.8deg); }
+.bk-collage[data-n="1"] .bk-snap[data-orient="portrait"]  { --snap-h: 46cqw; }
+.bk-collage[data-n="1"] .bk-snap[data-orient="landscape"] { --snap-h: 35cqw; }
 
+/* n=2 default: two prints side by side (like-shaped pairs sit as twins) */
+.bk-collage[data-n="2"] {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 3cqw;
+}
+.bk-collage[data-n="2"] .bk-snap { --snap-h: 31cqw; }
+.bk-collage[data-n="2"] .bk-snap[data-orient="portrait"]  { --snap-h: 35cqw; }
+.bk-collage[data-n="2"] .bk-snap[data-orient="landscape"] { --snap-h: 27cqw; }
+.bk-collage[data-n="2"] .bk-snap:nth-child(1) { transform: rotate(-2.4deg); }
+.bk-collage[data-n="2"] .bk-snap:nth-child(2) { transform: rotate(1.8deg); margin-top: 2cqw; }
+
+/* n=2, two landscapes: stacked with a slipped offset */
+.bk-collage[data-n="2"][data-mix="ll"] {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.bk-collage[data-n="2"][data-mix="ll"] .bk-snap { --snap-h: 24cqw; }
+.bk-collage[data-n="2"][data-mix="ll"] .bk-snap:nth-child(1) { margin-left: 10cqw; }
+.bk-collage[data-n="2"][data-mix="ll"] .bk-snap:nth-child(2) { margin: -5cqw 0 0 28cqw; }
+
+/* n=2, mixed pair: the second print overlaps, pinned lower — scrapbook style */
+.bk-collage[data-n="2"][data-mix]:not([data-mix="pp"], [data-mix="ss"], [data-mix="ll"]) .bk-snap:nth-child(2) {
+  margin: 6cqw 0 0 -6cqw;
+}
+
+/* n=3: one corner-mounted anchor print, two smaller prints on the right */
 .bk-collage[data-n="3"] {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 5%;
-  padding: 0 1%;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  justify-content: center;
+  justify-items: center; /* default (stretch) widens a narrow print to its column, breaking the uniform chrome */
+  align-items: center;
+  gap: 2cqw 3cqw;
 }
-.bk-collage[data-n="3"] .bk-snap:nth-child(1) { grid-row: 1 / 3; aspect-ratio: auto; transform: rotate(-1.4deg); }
+.bk-collage[data-n="3"] .bk-snap { --snap-h: 19cqw; }
+.bk-collage[data-n="3"] .bk-snap:nth-child(1) { grid-row: 1 / 3; --snap-h: 33cqw; transform: rotate(-1.4deg); }
 .bk-collage[data-n="3"] .bk-snap:nth-child(2) { transform: rotate(2.2deg); }
 .bk-collage[data-n="3"] .bk-snap:nth-child(3) { transform: rotate(-2deg); }
 
+/* n=4: loose 2×2, every print at its natural shape */
 .bk-collage[data-n="4"] {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5% 4%;
-  padding: 0 2%;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  justify-items: center; /* see n=3 — mixed columns must not stretch the polaroid figure */
+  align-items: center;
+  gap: 2.5cqw 3cqw;
 }
-.bk-collage[data-n="4"] .bk-snap { aspect-ratio: 4 / 3; }
+.bk-collage[data-n="4"] .bk-snap { --snap-h: 20cqw; }
 .bk-collage[data-n="4"] .bk-snap:nth-child(1) { transform: rotate(-2deg); }
-.bk-collage[data-n="4"] .bk-snap:nth-child(2) { transform: rotate(1.6deg) translateY(3%); }
+.bk-collage[data-n="4"] .bk-snap:nth-child(2) { transform: rotate(1.6deg) translateY(1cqw); }
 .bk-collage[data-n="4"] .bk-snap:nth-child(3) { transform: rotate(1.2deg); }
-.bk-collage[data-n="4"] .bk-snap:nth-child(4) { transform: rotate(-1.8deg) translateY(-2%); }
+.bk-collage[data-n="4"] .bk-snap:nth-child(4) { transform: rotate(-1.8deg) translateY(-1cqw); }
 
-/* 5+ : uniform mini-grid */
+/* 5+ : mini prints at one shared height, natural widths, masonry-ish rows */
 .bk-collage[data-n="many"] {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2cqw;
 }
-.bk-collage[data-n="many"] .bk-snap { aspect-ratio: 1 / 1; padding: 4px 4px 6px; }
+.bk-collage[data-n="many"] .bk-snap { --snap-h: 15cqw; padding: 1cqw 1cqw 1.8cqw; }
 .bk-collage[data-n="many"] .bk-snap:nth-child(odd)  { transform: rotate(-1.2deg); }
 .bk-collage[data-n="many"] .bk-snap:nth-child(even) { transform: rotate(1.2deg); }
 .bk-more-count {
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 17.8cqw;              /* a square mini print incl. its chrome */
   aspect-ratio: 1 / 1;
   font-family: var(--font-ui);
   font-size: 12px;
@@ -711,7 +767,10 @@
 @media (max-width: 719px) {
   .bk-face-inner { padding: 18px 16px 26px; }
   .bk-story { font-size: 14px; }
-  .bk-collage[data-n="1"] .bk-snap { width: 74%; }
+  /* single mobile page is a touch taller (3/4.1) — let the hero breathe */
+  .bk-collage[data-n="1"] .bk-snap { --snap-h: 46cqw; }
+  .bk-collage[data-n="1"] .bk-snap[data-orient="portrait"]  { --snap-h: 52cqw; }
+  .bk-collage[data-n="1"] .bk-snap[data-orient="landscape"] { --snap-h: 40cqw; }
 }
 
 /* ================= reduced motion ================= */

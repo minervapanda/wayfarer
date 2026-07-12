@@ -4,3 +4,6 @@
 .dev.vars
 .wrangler/
 dist/
+
+# Local test fixtures (agent-generated JPEGs) — must never land in the deployed site
+testdata/

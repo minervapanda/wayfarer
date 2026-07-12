@@ -35,3 +35,22 @@
   .dev.vars guidance), SETUP.md (Cloudflare URLs), .gitignore, WORKLOG.md.
 - Verified: `node --check` clean on the 5 changed JS files; sanitizeTo
   exercised in Node against 13 attack/legit cases (all pass).
+
+## 2026-07-12 — Orientation-aware frames: review fixes (fixer, round 1)
+
+- Applied fixes for all 5 findings from the orientation-frame review (design +
+  regression lenses). Full details merged into WORKLOG.md under
+  "Orientation-aware frames: review fixes".
+- Files touched: css/book.css (justify-items: center on the n=3/n=4 collage
+  grids), js/storycard.js (TAPE_PAD tape-overhang reservation in
+  layoutCollage's containment + banding via new extentTop(); drawTape 30px
+  height floor removed so the reservation scales; LAYOUTS_2.landscapesWide
+  side-by-side variant chosen by specsFor when zone aspect > 1.45; LAYOUTS[3]
+  fan reworked so print 1 anchors large on the left), .gitignore (testdata/).
+- Verified: `node --check js/storycard.js` clean; node harness (scratchpad
+  fixcheck.mjs) ran 5 zones × 15 orientation mixes × 40 seeds asserting
+  rotated prints AND the exact rotated tape strip stay inside the zone and
+  the reported col.top/bottom band; 2-landscape short-zone k now reaches the
+  0.58 cap exactly (prints 292px vs ~222 before); 3-photo hero occlusion
+  down from ~82% to worst-case 17–36% across sss/ppp/lll/pls; layouts remain
+  seed-deterministic.

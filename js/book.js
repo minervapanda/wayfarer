@@ -46,6 +46,17 @@ function el(tag, cls, text) {
 
 function reduced() { return mqReduced.matches; }
 
+// Orientation classes shared with the rest of the app (see ARCHITECTURE.md):
+// aspect = w/h; portrait < 0.85, landscape > 1.18, else square.
+// Frames follow the class (3/4, 4/3, 1/1) so cover-cropping is minimal.
+function orientOf(w, h) {
+  if (!w || !h) return 'square';
+  const aspect = w / h;
+  if (aspect < 0.85) return 'portrait';
+  if (aspect > 1.18) return 'landscape';
+  return 'square';
+}
+
 function easeInOut(t) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
 
 function setAngle(node, deg) {
@@ -138,8 +149,11 @@ function buildEntryFace(entry) {
     const collage = el('div', 'bk-collage');
     collage.dataset.n = n <= 4 ? String(n) : 'many';
     const shown = n <= 4 ? entry.photoIds : entry.photoIds.slice(0, 5);
+    // Frames default to square until hydrateFaces() reads the blob {w,h}.
+    collage.dataset.mix = 's'.repeat(shown.length);
     shown.forEach((pid, i) => {
       const fig = el('figure', 'bk-snap');
+      fig.dataset.orient = 'square';
       if (n === 1 || (n === 2 && i === 0)) fig.classList.add('bk-tape');
       if (n === 3 && i === 0) {
         fig.classList.add('bk-corners');
@@ -258,23 +272,37 @@ async function hydrateFaces(token) {
   for (const face of faces) {
     if (token !== renderToken) return;
     if (face.type !== 'entry') continue;
-    const imgs = face.el.querySelectorAll('img[data-photo-id]');
-    for (const img of imgs) {
-      if (token !== renderToken) return;
-      const pid = img.dataset.photoId;
-      try {
-        const rec = await getBlob(pid);
-        if (token !== renderToken) return;
-        if (rec && rec.blob) {
-          img.src = blobUrl(pid, rec.blob);
-          img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
-        } else {
-          swapMissing(img);
-        }
-      } catch (err) {
+    const imgs = [...face.el.querySelectorAll('img[data-photo-id]')];
+    // Fetch this face's photo records together so every frame shape
+    // (data-orient per snap + data-mix on the collage) lands in one pass,
+    // before any src is assigned — no frame reshaping under a loaded photo.
+    const recs = await Promise.all(
+      imgs.map((img) => getBlob(img.dataset.photoId).catch(() => null))
+    );
+    if (token !== renderToken) return;
+    imgs.forEach((img, i) => {
+      const rec = recs[i];
+      const fig = img.closest('.bk-snap');
+      if (fig && rec && rec.w > 0 && rec.h > 0) {
+        fig.dataset.orient = orientOf(rec.w, rec.h);
+      }
+    });
+    const collage = face.el.querySelector('.bk-collage');
+    if (collage) {
+      collage.dataset.mix = Array.from(
+        collage.querySelectorAll('.bk-snap'),
+        (f) => (f.dataset.orient || 'square')[0]
+      ).join('');
+    }
+    imgs.forEach((img, i) => {
+      const rec = recs[i];
+      if (rec && rec.blob) {
+        img.src = blobUrl(img.dataset.photoId, rec.blob);
+        img.addEventListener('load', () => img.classList.add('is-loaded'), { once: true });
+      } else {
         swapMissing(img);
       }
-    }
+    });
     if (face.voiceEl) {
       const entry = entries.find((e) => e.id === face.entryId);
       if (!entry || !entry.voiceId) continue;

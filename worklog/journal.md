@@ -8,3 +8,26 @@
 - **js/demo.js**: `loadDemo()` seeds 4 entries (Kyoto temple morning, Amalfi coast drive, Marrakech souk, Patagonia trail) with 12 seeded-deterministic canvas postcards (800×600 JPEG q0.85 — layered gradient skies, ridge silhouettes, sea shimmer, sun/crescent moon, stars, film grain), plausible coords, short stories. Fixed `wf-demo-*` ids guard against double-loading (re-load allowed after the user deletes them); emits `entries-changed { reason: 'demo' }`, toasts "Sample trip loaded". Handles missing canvas/`toBlob` with an error toast.
 - **css/journal.css**: full styling for the view using base.css tokens only — paper chapters, hero gradient overlay (AA contrast), drop caps, dashed-coord card, scrapbook-theme tilted thumbs, 44px+ targets, `:focus-visible` rings incl. SVG pins, reduced-motion-safe spinner, responsive single-column under 760px.
 - Verified: `node --check` on all four JS files, module smoke test of narratives exports, no edits outside owned files, no cross-file needs.
+
+## 2026-07-12 — Orientation-aware filmstrip for the chapter photo strip
+
+Round goal: stop visible cropping — frames follow each photo's own aspect ratio.
+
+- js/journal.js: added `orientOf(w, h)` using the shared thresholds (aspect = w/h;
+  portrait < 0.85, landscape > 1.18, else square). Thumb build now does one
+  `getBlob(pid)` that sets both `img.src` and `data-orient` on the `.jr-thumb`
+  button from the stored BlobRec w/h (missing blob still gets `.jr-photo-missing`).
+  Hero image path (`attachPhoto`) untouched — it stays a full-bleed cover backdrop.
+- css/journal.css: `.jr-strip` converted from a square grid to a filmstrip —
+  `display: flex`, fixed 108px row height, `overflow-x: auto` (existing overflow
+  pattern; page never scrolls sideways), vertical padding so the hover lift and
+  scrapbook tilt aren't clipped by the scroll container. `.jr-thumb` gets
+  per-orientation `aspect-ratio` via `[data-orient]`: portrait 3/4, landscape 4/3,
+  square 1/1, with 1/1 as the pre-load fallback. `object-fit: cover` retained for
+  sub-pixel tidiness; photos are never stretched or letterboxed.
+- Unchanged by design: lightbox (already shows the uncropped photo — verified),
+  hover lift, scrapbook rotations, 44px minimum targets (108px row), reduced
+  motion (transitions ride --dur-1, zeroed by base.css).
+- Out of scope respected: compose-modal thumbs (css/app.css) not touched.
+- Verified: `node --check js/journal.js` passes; `.jr-strip`/`.jr-thumb` are
+  referenced nowhere outside my two files.

@@ -87,3 +87,46 @@ Per-agent notes land in `worklog/*.md`; the fix agent merges highlights back her
 **Deploy hygiene**
 - `wrangler.toml` + `SETUP-CLOUDFLARE.md`: deploys now upload a staged `dist/` (index.html, config.js, css/, js/ — functions/ auto-bundled from the repo root) instead of the repo root. Wrangler Pages has no user-configurable ignore, so root deploys would have served ARCHITECTURE.md, worklog/, supabase/schema.sql, legacy/ — and, fatally, a local `.dev.vars` holding SITE_PASSWORD at `/.dev.vars`. The doc names the `.dev.vars` mechanism for the local gate preview and warns explicitly; `.gitignore` gains `.dev.vars`, `.wrangler/`, `dist/`.
 - `SETUP.md`: the Supabase Site URL / Redirect URLs step now points at the Cloudflare Pages address (the retired `minervapanda.github.io/wayfarer/` instruction sent magic links to a dead origin), and step 6 redeploys via SETUP-CLOUDFLARE.md instead of GitHub Pages.
+
+## 2026-07-12 — Orientation-aware frames: review fixes
+
+Round goal: photos stop being visibly "cut" — every frame follows its photo's own aspect. Shared thresholds everywhere (aspect = w/h from the stored blob {w,h} or decoded pixels): portrait < 0.85, landscape > 1.18, else square; photo-area frames 3/4, 4/3, 1/1; cover-crop stays for sliver trims only, never stretch/letterbox. Merged from worklog/book.md, journal.md, storycard.md, skeptic-orientation.md, regressions-review.md and fixer.md.
+
+**Book** (`js/book.js` + `css/book.css`): `hydrateFaces` stamps `data-orient` per `.bk-snap` and `data-mix` (orient initials, e.g. "pl", "lls") per collage from the blob records before any `img.src` is assigned, so frames never reshape under a visible photo. The collage is an inline-size container; each print is sized by a `--snap-h` height in cqw with `aspect-ratio: var(--frame)` on the img, so every layout's total height is deterministic and can't push title/story off the face. Curated per-count layouts: shape-following n=1 hero, twin/stacked/overlapping n=2 by pair, corner-mounted n=3 anchor grid, loose 2×2 n=4, shared-height masonry rows for 5+ with the "+n more" chip. Verified live across 9 seeded mixes on desktop and a 390px iframe; flip pagination, TOC, inert/aria spread logic regression-checked.
+
+**Journal** (`js/journal.js` + `css/journal.css`): chapter photo strip converted from a square grid to a 108px filmstrip (`overflow-x: auto`, page never scrolls sideways) with per-orientation `aspect-ratio` on `.jr-thumb` via `data-orient` (square pre-load fallback). Hero backdrop and lightbox (already uncropped) untouched; 44px targets and reduced motion preserved.
+
+**Share cards** (`js/storycard.js`): every polaroid's photo window is exactly its class aspect (`ORIENT_ASPECT` + `printDims`; chrome unchanged — 5% pad, 18% chin). New `layoutCollage()` anchors prints from curated fraction specs, sizes all prints by one shared photo-area unit capped per count (`UNIT_CAP`), shrinks it until every rotated frame stays inside the photo zone, then re-centers the collage + excerpt around the collage's true rotated bbox. 2-photo layouts pick by orientation pair; the excerpt-line loop biases the photo band by mix (all-landscape ×0.85, all-portrait ×1.15). Contract, fallback card, postcard branch and determinism untouched.
+
+**Review findings fixed** (fixer, from the skeptic-orientation + regression reviews):
+- `css/book.css` — the n=3/n=4 collage grids left `justify-items` at its default (stretch), so whenever a column mixed orientations the narrower polaroid stretched to the column's max-content width, pinning the photo left inside up to ~12cqw of one-sided white chrome. Both grids now `justify-items: center`.
+- `js/storycard.js` — `layoutCollage` bounded only the print rectangles, but the washi tape on the topmost print overhangs the frame; when the vertical fit bound (e.g. 1 portrait + story), the strip painted ~42px into the title's glyphs. The tape overhang is now reserved by a new `extentTop()` (TAPE_PAD = 0.16·pw, covering the worst −38° strip plus print rotation) in both the containment pass and `col.top` banding, and `drawTape`'s 30px height floor was removed so the reservation bounds every print size. Node harness: exact rotated tape stays inside the zone across 5 zones × 15 mixes × 40 seeds.
+- `js/storycard.js` — two-landscape collages in short zones (square format + long story) bound the shared scale at the stack's cy=0.27 top anchor, leaving ~2/3 of the band empty around ~222px prints. `specsFor` now picks a new `landscapesWide` side-by-side arrangement when zone aspect > 1.45; the reviewer's scenario now reaches the 0.58 cap exactly (292px prints).
+- `js/storycard.js` — the 3-photo fan placed print 2 near-identical in size just 0.06·zone from print 1, occluding ~82% of the user's hero photo. `LAYOUTS[3]` reworked: print 1 anchors large (s 1.06) on the left, prints 2/3 fan smaller to the right — worst-case hero occlusion measured at 17–36% across all orientation mixes, matching the book's hero-first n=3 story.
+- Repo hygiene — untracked `testdata/` JPEG fixtures (outside every module's assigned files) can no longer ride a `git add -A` into the deployed site: `testdata/` added to `.gitignore`.
+
+Verified: `node --check` clean on js/storycard.js (only JS changed by the fixer); numeric harness green on containment, tape extents, cap utilization, occlusion and seed-determinism. Not fixed this round (minor, out of assigned findings): imported legacy blobs with `w:0` stay `data-orient="square"` in book/journal while storycard classifies from pixels; `.jr-strip` 2px side padding clips the focus ring on edge thumbs.
+
+## 2026-07-12 — Full E2E test pass (local, wrangler pages dev + Chrome)
+
+Fixtures: 4 generated JPEGs with real EXIF (GPS + DateTimeOriginal) in testdata/ — portrait 3:4, landscape 3:2, square, panorama 3:1.
+
+| Feature | Result |
+|---|---|
+| Password gate: wrong pw 401, correct pw signed cookie, //evil.com redirect neutralized | PASS (curl + browser) |
+| Gate session survives browser restart; GET /logout shows confirm page; POST signs out; re-login works | PASS |
+| Photo upload (4 mixed-aspect files at once) | PASS |
+| EXIF date prefill (04/03/2026 from DateTimeOriginal) | PASS |
+| EXIF GPS → reverse geocode → "Kyoto, Japan" auto-filled | PASS |
+| Save entry; validation blocks photo-less+text-less save | PASS |
+| Orientation-aware book collage: portrait/landscape/square/panorama each keep their shape | PASS |
+| **Hard refresh: all entries + photo blobs persist (IndexedDB)** | **PASS — core requirement** |
+| Journal: chapter hero, auto narrative (Kyoto), coords card, filmstrip with true aspect widths | PASS |
+| Share card story 9:16 + square 1:1 with mixed orientations; PNG download | PASS |
+| Edit flow (compose reopens with entry) + Delete flow (custom confirm, entry removed) | PASS |
+| Export JSON (5 entries + 16 blobs verified by parsing the download) | PASS |
+| Theme switch (minimal/passport) re-skins book + chrome coherently | PASS |
+| Desktop two-page spread + mobile single-page both render | PASS |
+| Voice dictation/recording | NOT auto-tested (OS mic permission needs a human) — manual test recommended |
+
+Outstanding to go live: user must complete `npx wrangler@4 login` and `npx supabase login`; then deploy, provision Supabase (schema.sql + bucket), fill config.js, flip GitHub repo private.

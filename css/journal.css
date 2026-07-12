@@ -345,25 +345,38 @@
   letter-spacing: 0.3px;
 }
 
-/* photo strip */
+/* photo strip — a filmstrip: fixed row height, each frame's width follows
+   its photo's orientation (data-orient set by js/journal.js from the stored
+   blob w/h — portrait 3/4, landscape 4/3, square 1/1), so prints are barely
+   cropped instead of square center-crops. Scrolls sideways within the strip
+   when wide; the vertical padding leaves room for the hover lift and the
+   scrapbook tilt, which the scroll container would otherwise clip. */
 .jr-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  display: flex;
   gap: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding: 6px 2px;
 }
 .jr-thumb {
+  flex: none;
+  height: 108px;
+  aspect-ratio: 1 / 1; /* square fallback until the photo record loads */
   padding: 0;
   border: none;
   background: var(--paper-edge);
   border-radius: 6px;
   cursor: pointer;
   overflow: hidden;
-  aspect-ratio: 1 / 1;
   min-width: 44px;
   min-height: 44px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.14);
   transition: transform var(--dur-1) var(--ease);
 }
+.jr-thumb[data-orient="portrait"] { aspect-ratio: 3 / 4; }
+.jr-thumb[data-orient="landscape"] { aspect-ratio: 4 / 3; }
+.jr-thumb[data-orient="square"] { aspect-ratio: 1 / 1; }
 .jr-thumb img {
   width: 100%;
   height: 100%;

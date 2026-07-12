@@ -59,18 +59,25 @@ const FALLBACK_TOKENS = {
   stamp: '#63755a',
 };
 
+// Orientation-aware prints. A photo's class comes from its own decoded
+// pixels (aspect = w/h): 'portrait' < 0.85, 'landscape' > 1.18, else
+// 'square' — the same thresholds every view uses. Each class gets a frame
+// whose photo area matches (3:4 / 4:3 / 1:1), so the residual cover-crop
+// only trims a sliver instead of cutting whole sides off.
+const ORIENT_ASPECT = { portrait: 3 / 4, landscape: 4 / 3, square: 1 };
+
 // Curated collage placements per photo count (fractions of the photo zone).
+// cx/cy anchor the print center, s scales a print relative to its siblings,
 // r = rotation range in degrees; flip = deterministic sign flip from the rng.
 const LAYOUTS = {
   1: [{ cx: 0.5, cy: 0.5, s: 1, r: [2, 5], flip: true }],
-  2: [
-    { cx: 0.36, cy: 0.4, s: 1, r: [-6, -3] },
-    { cx: 0.64, cy: 0.6, s: 1, r: [3, 6] },
-  ],
+  // 3: the FIRST photo is the entry's hero everywhere (journal hero band,
+  // book anchor print), so it anchors large on the left while the two
+  // smaller prints fan off to the right with only sliver overlaps.
   3: [
-    { cx: 0.4, cy: 0.44, s: 0.96, r: [-9, -6] },
-    { cx: 0.46, cy: 0.5, s: 1, r: [-3, -1] },
-    { cx: 0.68, cy: 0.58, s: 0.98, r: [3, 6] },
+    { cx: 0.3, cy: 0.42, s: 1.06, r: [-7, -4] },
+    { cx: 0.66, cy: 0.35, s: 0.88, r: [1, 4] },
+    { cx: 0.58, cy: 0.68, s: 0.94, r: [3, 6] },
   ],
   4: [
     { cx: 0.3, cy: 0.28, s: 0.98, r: [-6, -3] },
@@ -79,12 +86,41 @@ const LAYOUTS = {
     { cx: 0.71, cy: 0.7, s: 0.97, r: [-5, -2] },
   ],
 };
-const SIZE_COEF = {
-  1: { w: 0.78, h: 0.94 },
-  2: { w: 0.56, h: 0.72 },
-  3: { w: 0.5, h: 0.64 },
-  4: { w: 0.44, h: 0.52 },
+
+// Two prints arrange by orientation pair: portraits sit side by side,
+// landscapes stack with a sideways offset (side by side instead when the
+// zone is too short for the stack to grow — see specsFor), anything mixed
+// (or square) staggers on the diagonal with a slight overlap.
+const LAYOUTS_2 = {
+  portraits: [
+    { cx: 0.3, cy: 0.47, s: 1, r: [-5, -2] },
+    { cx: 0.7, cy: 0.53, s: 1, r: [2, 5] },
+  ],
+  landscapes: [
+    { cx: 0.44, cy: 0.27, s: 1, r: [-4, -2] },
+    { cx: 0.57, cy: 0.73, s: 1, r: [2, 4] },
+  ],
+  landscapesWide: [
+    { cx: 0.3, cy: 0.46, s: 1, r: [-4, -2] },
+    { cx: 0.7, cy: 0.55, s: 1, r: [2, 4] },
+  ],
+  mixed: [
+    { cx: 0.38, cy: 0.39, s: 1, r: [-6, -3] },
+    { cx: 0.63, cy: 0.62, s: 1, r: [3, 6] },
+  ],
 };
+
+// Ceiling on the photo-area unit (≈ √ of the visible photo area) per print
+// count, as a fraction of the zone's short side. The fit pass in
+// layoutCollage() may shrink further so rotated prints stay inside the zone.
+const UNIT_CAP = { 1: 0.94, 2: 0.58, 3: 0.5, 4: 0.44 };
+
+// The washi tape drawTape() lays across the LAST print's top edge overhangs
+// above the frame: strip w = 0.42·pw, h = 0.26·w, centered 0.02·pw below the
+// top edge, rotated up to 38° → rises (0.21·sin38 + 0.0546·cos38 − 0.02)·pw
+// ≈ 0.153·pw. 0.16 adds slack for the print's own ≤9° rotation, so the
+// containment/banding passes can reserve for the tape too.
+const TAPE_PAD = 0.16;
 
 /* ---------------- public API ---------------- */
 
@@ -165,6 +201,14 @@ async function renderWithPhotos(e, fmtKey, photos) {
   const excerpt = trimExcerpt(e.story);
   const blockW = Math.min(L.measure, W - 2 * L.mx);
   const zoneTop = y + 10;
+  // Landscape-only collages run short, portrait-only ones tall — bias how
+  // much vertical band the prints reserve before the excerpt gives up lines.
+  let minPhoto = L.minPhoto;
+  if (photos.length) {
+    const cls = photos.map(orientationOf);
+    if (cls.every((c) => c === 'landscape')) minPhoto = Math.round(minPhoto * 0.85);
+    else if (cls.every((c) => c === 'portrait')) minPhoto = Math.round(minPhoto * 1.15);
+  }
   let exLines = [];
   let zone = { x: L.mx, y: zoneTop, w: W - 2 * L.mx, h: 0 };
   let maxLines = 7;
@@ -175,7 +219,7 @@ async function renderWithPhotos(e, fmtKey, photos) {
     }
     const exH = exLines.length ? exLines.length * L.excerptLH + GAP : 0;
     zone.h = footerTop - GAP - exH - zoneTop;
-    if (!photos.length || zone.h >= L.minPhoto || maxLines <= 3) break;
+    if (!photos.length || zone.h >= minPhoto || maxLines <= 3) break;
     maxLines--;
   }
   // Extreme squeeze (huge title + tiny format): give photos the room.
@@ -185,8 +229,21 @@ async function renderWithPhotos(e, fmtKey, photos) {
   }
 
   /* ---- middle: polaroid collage or postcard motif ---- */
+  let exFirstBaseline = zone.y + zone.h + GAP + L.excerpt;
   if (photos.length) {
-    drawCollage(ctx, photos, zone, T, rng);
+    const col = layoutCollage(photos, zone, rng);
+    // Band the content around the collage's REAL height: hug the excerpt to
+    // the lowest rotated print edge and center the leftover air, so prints
+    // and text never collide whatever the orientation mix.
+    const exBlockH = exLines.length ? GAP + exLines.length * L.excerptLH : 0;
+    const bandH = footerTop - GAP - zone.y;
+    const colH = col.bottom - col.top;
+    const dy = zone.y + Math.max(0, (bandH - colH - exBlockH) / 2) - col.top;
+    for (let i = 0; i < col.prints.length; i++) {
+      const p = col.prints[i];
+      drawPolaroid(ctx, p.img, p.cx, p.cy + dy, p.pw, p.ph, p.rot, T, i === col.prints.length - 1, rng);
+    }
+    exFirstBaseline = col.bottom + dy + GAP + L.excerpt;
   } else if (zone.h > 130) {
     drawPostcard(ctx, zone, e, T, rng);
   }
@@ -197,7 +254,7 @@ async function renderWithPhotos(e, fmtKey, photos) {
     ctx.fillStyle = rgba(T.inkC, 0.95);
     ctx.textAlign = 'left';
     const bx = (W - blockW) / 2;
-    let ey = zone.y + zone.h + GAP + L.excerpt;
+    let ey = exFirstBaseline;
     for (const line of exLines) {
       ctx.fillText(line, bx, ey);
       ey += L.excerptLH;
@@ -379,25 +436,117 @@ function drawPin(ctx, x, baseline, size, color) {
 
 /* ---------------- polaroid collage ---------------- */
 
-function drawCollage(ctx, photos, zone, T, rng) {
+// Classify a decoded bitmap by its own aspect ratio (w/h).
+function orientationOf(img) {
+  const w = img.width || img.naturalWidth || 1;
+  const h = img.height || img.naturalHeight || 1;
+  const aspect = w / Math.max(1, h);
+  if (aspect < 0.85) return 'portrait';
+  if (aspect > 1.18) return 'landscape';
+  return 'square';
+}
+
+// Frame dims for a photo area of unit size u (visible photo area ≈ u²,
+// shaped by the class aspect). The polaroid chrome is untouched:
+// drawPolaroid still derives the 5% pad and 18% chin from the frame width,
+// so with ph = ih + 0.23·pw the photo window is exactly the class aspect.
+function printDims(u, cls) {
+  const A = ORIENT_ASPECT[cls] || 1;
+  const iw = u * Math.sqrt(A);
+  const pw = iw / 0.9; //           iw = pw − 2·pad = 0.9·pw
+  const ph = iw / A + 0.23 * pw; // ih + pad + chin
+  return { pw, ph };
+}
+
+function specsFor(n, classes, zone) {
+  if (n === 2) {
+    if (classes[0] === 'portrait' && classes[1] === 'portrait') return LAYOUTS_2.portraits;
+    if (classes[0] === 'landscape' && classes[1] === 'landscape') {
+      // Stacking needs vertical room: in short zones the 0.27/0.73 anchors
+      // bind the shared scale far below UNIT_CAP (tiny prints in a sea of
+      // paper), so twin landscapes sit side by side there instead.
+      const shortZone = zone.w / Math.max(1, zone.h) > 1.45;
+      return shortZone ? LAYOUTS_2.landscapesWide : LAYOUTS_2.landscapes;
+    }
+    return LAYOUTS_2.mixed;
+  }
+  return LAYOUTS[n];
+}
+
+// Place up to four prints inside `zone`, each frame shaped to its own photo.
+// Deterministic (seeded rng), and every rotated print is kept fully inside
+// the zone, so prints can never wander into the title, excerpt or footer
+// bands or out of the format's safe area. Returns { prints, top, bottom } —
+// top/bottom are the collage's true vertical extent for banding.
+function layoutCollage(photos, zone, rng) {
   const n = Math.min(photos.length, 4);
-  const specs = LAYOUTS[n];
-  const coef = SIZE_COEF[n];
+  const classes = photos.slice(0, n).map(orientationOf);
+  const specs = specsFor(n, classes, zone);
   const aspect = zone.w / Math.max(1, zone.h);
   const spread = Math.min(1.3, Math.max(1, aspect / 1.25));
-  const pw = Math.min(zone.w * coef.w, (zone.h * coef.h) / 1.2);
-  const ph = pw * 1.2;
 
+  // Anchors, jitter and rotations first, with unit-sized frames…
+  const prints = [];
   for (let i = 0; i < n; i++) {
     const s = specs[i];
     const jx = (rng() - 0.5) * zone.w * 0.03;
     const jy = (rng() - 0.5) * zone.h * 0.03;
-    const cx = zone.x + zone.w * (0.5 + (s.cx - 0.5) * spread) + jx;
-    const cy = zone.y + zone.h * s.cy + jy;
     let deg = s.r[0] + (s.r[1] - s.r[0]) * rng();
     if (s.flip && rng() < 0.5) deg = -deg;
-    drawPolaroid(ctx, photos[i], cx, cy, pw * (s.s || 1), ph * (s.s || 1), (deg * Math.PI) / 180, T, i === n - 1, rng);
+    const d = printDims(s.s || 1, classes[i]);
+    prints.push({
+      img: photos[i],
+      cx: zone.x + zone.w * (0.5 + (s.cx - 0.5) * spread) + jx,
+      cy: zone.y + zone.h * s.cy + jy,
+      pw: d.pw,
+      ph: d.ph,
+      rot: (deg * Math.PI) / 180,
+    });
   }
+
+  // …then one shared scale: the largest photo-area unit that keeps every
+  // rotated frame inside the zone, capped per count so collages keep air.
+  // The last print carries the washi tape, whose overhang above the frame
+  // counts toward its top extent — tape must clear the title band too.
+  let k = UNIT_CAP[n] * Math.min(zone.w, zone.h);
+  for (let i = 0; i < prints.length; i++) {
+    const p = prints[i];
+    const ex = extentX(p);
+    const ey = extentY(p);
+    k = Math.min(
+      k,
+      (p.cx - zone.x) / ex,
+      (zone.x + zone.w - p.cx) / ex,
+      (p.cy - zone.y) / extentTop(p, i === prints.length - 1),
+      (zone.y + zone.h - p.cy) / ey
+    );
+  }
+  k = Math.max(40, k); // degenerate zones: draw tiny rather than vanish
+
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (let i = 0; i < prints.length; i++) {
+    const p = prints[i];
+    p.pw *= k;
+    p.ph *= k;
+    top = Math.min(top, p.cy - extentTop(p, i === prints.length - 1));
+    bottom = Math.max(bottom, p.cy + extentY(p));
+  }
+  return { prints, top, bottom };
+}
+
+// Half extents of a rotated pw×ph rectangle along the canvas axes.
+function extentX(p) {
+  return (p.pw / 2) * Math.abs(Math.cos(p.rot)) + (p.ph / 2) * Math.abs(Math.sin(p.rot));
+}
+function extentY(p) {
+  return (p.pw / 2) * Math.abs(Math.sin(p.rot)) + (p.ph / 2) * Math.abs(Math.cos(p.rot));
+}
+// Top half-extent including the tape overhang (the extent of the frame
+// enlarged by TAPE_PAD·pw on the vertical axis, which contains the rotated
+// strip), so tape can never paint above the zone — i.e. over the title.
+function extentTop(p, withTape) {
+  return extentY(p) + (withTape ? TAPE_PAD * p.pw * Math.abs(Math.cos(p.rot)) : 0);
 }
 
 function drawPolaroid(ctx, img, cx, cy, pw, ph, rot, T, withTape, rng) {
@@ -439,9 +588,11 @@ function drawPolaroid(ctx, img, cx, cy, pw, ph, rot, T, withTape, rng) {
   ctx.restore();
 }
 
-// Semi-transparent striped washi tape across a photo corner.
+// Semi-transparent striped washi tape across a photo corner. Height scales
+// strictly with width (no pixel floor) so the layout's TAPE_PAD reservation
+// bounds the overhang at every print size.
 function drawTape(ctx, T, rng, x, y, w) {
-  const h = Math.max(30, w * 0.26);
+  const h = w * 0.26;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(((-38 + rng() * 16) * Math.PI) / 180);

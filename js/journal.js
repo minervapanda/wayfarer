@@ -56,6 +56,16 @@ function fmtCoord(lat, lon) {
   return `${Math.abs(lat).toFixed(2)}°${ns}, ${Math.abs(lon).toFixed(2)}°${ew}`;
 }
 
+/** Orientation class from stored pixel dims (BlobRec.w/h). Thresholds are
+    shared app-wide so every view agrees: aspect = w/h; 'portrait' when
+    aspect < 0.85, 'landscape' when aspect > 1.18, else 'square'. */
+function orientOf(w, h) {
+  const aspect = w > 0 && h > 0 ? w / h : 1;
+  if (aspect < 0.85) return 'portrait';
+  if (aspect > 1.18) return 'landscape';
+  return 'square';
+}
+
 /** Lazy-load a stored photo into an <img>, handling the missing-blob case. */
 function attachPhoto(img, photoId) {
   getBlob(photoId).then((rec) => {
@@ -414,7 +424,19 @@ function chapterEl(entry, index) {
       const img = el('img');
       img.alt = '';
       img.loading = 'lazy';
-      attachPhoto(img, pid);
+      // One getBlob serves both the pixels and the frame shape: data-orient
+      // drives the thumb's filmstrip aspect-ratio (css/journal.css), so
+      // portrait/landscape prints keep their own proportions instead of a
+      // square center-crop. Until the record loads (or if the blob is gone)
+      // the square fallback frame applies.
+      getBlob(pid).then((rec) => {
+        if (rec && rec.blob) {
+          btn.dataset.orient = orientOf(rec.w, rec.h);
+          img.src = blobUrl(pid, rec.blob);
+        } else {
+          btn.classList.add('jr-photo-missing');
+        }
+      }).catch(() => btn.classList.add('jr-photo-missing'));
       btn.appendChild(img);
       btn.addEventListener('click', () => {
         lightbox?.open(photoIds, idx, captionFor(entry, headingText));
