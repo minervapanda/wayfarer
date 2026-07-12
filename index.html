@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="./css/book.css">
 <link rel="stylesheet" href="./css/voice.css">
 <link rel="stylesheet" href="./css/journal.css">
+<link rel="stylesheet" href="./css/share.css">
 </head>
 <body>
 
@@ -173,6 +174,29 @@
       <button type="button" id="confirm-ok" class="btn btn-primary">OK</button>
     </div>
   </form>
+</dialog>
+
+<!-- Share modal: a diary page pressed into a shareable card. Driven by js/sharecard.js. -->
+<dialog id="share-modal" class="share-modal" aria-labelledby="share-heading">
+  <div class="share-sheet paper">
+    <button type="button" id="share-close" class="share-close" aria-label="Close share view">×</button>
+    <header class="share-header">
+      <p class="script share-eyebrow">worth showing off</p>
+      <h2 id="share-heading">Share this page</h2>
+      <p id="share-entry-line" class="share-entry-line"></p>
+    </header>
+    <div id="share-format" class="share-format" role="group" aria-label="Card shape">
+      <button type="button" class="btn btn-ghost" data-format="story" aria-pressed="true">Story 9:16</button>
+      <button type="button" class="btn btn-ghost" data-format="square" aria-pressed="false">Square 1:1</button>
+    </div>
+    <div id="share-preview" class="share-preview" data-format="story"></div>
+    <p id="share-status" class="share-status visually-hidden" role="status" aria-live="polite"></p>
+    <footer class="share-actions">
+      <p id="share-hint" class="share-hint" hidden>Download, then post from your phone.</p>
+      <button type="button" id="share-download" class="btn">Download PNG</button>
+      <button type="button" id="share-native" class="btn btn-primary">Share</button>
+    </footer>
+  </div>
 </dialog>
 
 <!-- Toast stack: driven only by util.toast(). -->

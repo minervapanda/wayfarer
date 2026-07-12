@@ -352,3 +352,31 @@ Everyone: append a dated summary to `worklog/<yourmodule>.md`; cross-file reques
 
 Stub files for all builder modules already exist and export the exact contract
 signatures as graceful no-ops — replace the bodies, keep the signatures.
+
+---
+
+## 7. Addendum — 2026-07-12 share cards + Cloudflare Pages
+
+Sanctioned extensions to the contracts above (integrated and verified):
+
+- **New bus event** (addition to the §2 table):
+
+  | Event         | detail                 | Emitted by → consumed by |
+  |---------------|------------------------|--------------------------|
+  | `share-entry` | `{ entryId: string }`  | book.js, journal.js → sharecard.js (share modal) |
+
+- **js/storycard.js** — pure canvas renderer, no DOM UI:
+  `FORMATS = { story: {w:1080,h:1920,label}, square: {w:1080,h:1080,label} }`;
+  `async renderStoryCard(entry, 'story'|'square') -> { blob, width, height, filename }`
+  (never throws; falls back to a minimal typographic card).
+- **js/sharecard.js** + **css/share.css** — `initShareCard()` (called by main.js at
+  boot); listens for `share-entry`, drives the `#share-modal` dialog, lazily
+  imports storycard.js, Web Share Level 2 with download fallback.
+- **index.html new IDs** (share modal): `#share-modal`, `#share-close`,
+  `#share-heading`, `#share-entry-line`, `#share-format`, `#share-preview`,
+  `#share-status`, `#share-hint`, `#share-download`, `#share-native`.
+- **Hosting** — now Cloudflare Pages at the ROOT of a `*.pages.dev` domain
+  (GitHub Pages retired; keep every path `./relative` anyway).
+  `functions/_middleware.js` is a standalone Pages Function (password gate —
+  it must never import app modules); `wrangler.toml` + `SETUP-CLOUDFLARE.md`
+  cover deploys.

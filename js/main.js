@@ -11,6 +11,7 @@ import { initBook } from './book.js';
 import { initJournal } from './journal.js';
 import { initSync } from './sync.js';
 import { initExporter } from './exporter.js';
+import { initShareCard } from './sharecard.js';
 import { ingestFiles } from './ingest.js';
 import { reverseGeocode, forwardGeocode } from './geocode.js';
 import { initDictation, createVoiceRecorder } from './voice.js';
@@ -592,6 +593,7 @@ async function boot() {
   // services
   try { initSync(); } catch (err) { console.error('Wayfarer: sync init failed', err); }
   try { initExporter(); } catch (err) { console.error('Wayfarer: exporter init failed', err); }
+  try { initShareCard(); } catch (err) { console.error('Wayfarer: share init failed', err); }
 
   // shell wiring
   initViewToggle();

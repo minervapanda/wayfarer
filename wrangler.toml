@@ -1,0 +1,13 @@
+# Cloudflare Pages configuration for Wayfarer.
+# The site is plain static files; functions/ holds the password-gate middleware.
+#
+# Deploys upload the staged `dist/` folder — NOT the repo root. Wrangler's Pages
+# deploy has no user-configurable ignore list (only .git/node_modules/.DS_Store/
+# functions are auto-excluded), so deploying "." would publish internal files
+# (ARCHITECTURE.md, worklog/, supabase/schema.sql, legacy/) and, worse, any
+# local `.dev.vars` (SITE_PASSWORD) or `.wrangler/` state as fetchable assets.
+# SETUP-CLOUDFLARE.md step 4 stages exactly the app files into dist/ first.
+
+name = "wayfarer"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-01"

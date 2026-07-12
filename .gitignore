@@ -1,1 +1,6 @@
 .DS_Store
+
+# Cloudflare Pages: local secrets, dev-server state, and the staged deploy dir
+.dev.vars
+.wrangler/
+dist/

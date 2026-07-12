@@ -346,12 +346,14 @@
   border-radius: 50%;
   cursor: pointer;
   font-size: 15px;
+  /* Full-opacity --ink-soft on --paper is ~5.4:1; the old resting
+     opacity: 0.6 dropped the glyphs to ~2.4:1 — below WCAG AA — and touch
+     devices never see the hover state that restored them. */
   color: var(--ink-soft);
-  opacity: 0.6;
-  transition: opacity var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+  transition: color var(--dur-1) var(--ease),
               background-color var(--dur-1) var(--ease);
 }
-.bk-face:hover .bk-iconbtn, .bk-iconbtn:focus-visible { opacity: 1; }
+.bk-face:hover .bk-iconbtn, .bk-iconbtn:focus-visible { color: var(--ink); }
 .bk-iconbtn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
 .bk-iconbtn-delete:hover { color: #8c2b1e; background: rgba(140, 43, 30, 0.09); }
 

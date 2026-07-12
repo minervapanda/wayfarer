@@ -30,10 +30,12 @@ devices. It takes about ten minutes and the free tier is plenty.
 4. **Enable email magic links.**
    - **Authentication → Sign In / Providers → Email**: make sure Email is
      enabled. Magic links are on by default; no password settings needed.
-   - **Authentication → URL Configuration**: set **Site URL** to
-     `https://minervapanda.github.io/wayfarer/` and add the same URL to the
-     **Redirect URLs** allow-list. The emailed link must land back on the app
-     so it can pick the session out of the URL.
+   - **Authentication → URL Configuration**: set **Site URL** to your
+     Cloudflare Pages address, e.g. `https://wayfarer.pages.dev/`, and add the
+     same URL to the **Redirect URLs** allow-list (see `SETUP-CLOUDFLARE.md`
+     step 5 — the old GitHub Pages URL is retired and must not be used here).
+     The emailed link must land back on the app so it can pick the session out
+     of the URL.
    - Testing locally too? Also add your dev URL (e.g.
      `http://localhost:8000/`) to the redirect list.
 
@@ -50,9 +52,10 @@ devices. It takes about ten minutes and the free tier is plenty.
    ```
 
 6. **Redeploy.**
-   Commit and push; once GitHub Pages redeploys, the site greets you with the
-   sign-in landing instead of opening the diary straight away (there's a
-   "Continue offline" option if you ever just want the local diary).
+   Redeploy to Cloudflare Pages (`SETUP-CLOUDFLARE.md` step 4); the site then
+   greets you with the sign-in landing instead of opening the diary straight
+   away (there's a "Continue offline" option if you ever just want the local
+   diary).
 
 ## Verify it works
 

@@ -342,7 +342,15 @@ function chapterEl(entry, index) {
   editBtn.type = 'button';
   editBtn.setAttribute('aria-label', `Edit “${headingText}”`);
   editBtn.addEventListener('click', () => bus.emit('compose-open', { entryId: entry.id }));
-  hero.appendChild(editBtn);
+  const shareBtn = el('button', 'jr-edit jr-share', '↗');
+  shareBtn.type = 'button';
+  shareBtn.title = 'Share this page';
+  shareBtn.setAttribute('aria-label', `Share “${headingText}”`);
+  shareBtn.addEventListener('click', () => bus.emit('share-entry', { entryId: entry.id }));
+  // .jr-actions (css/share.css) clusters the pills where .jr-edit sat alone.
+  const actions = el('div', 'jr-actions');
+  actions.append(shareBtn, editBtn);
+  hero.appendChild(actions);
   art.appendChild(hero);
 
   /* ----- body: narrative + side column ----- */

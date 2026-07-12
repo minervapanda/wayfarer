@@ -245,14 +245,16 @@
   font-size: 13px;
   font-weight: 600;
   color: #fffdf7;
-  background: rgba(20, 12, 4, 0.44);
+  /* 0.62 scrim keeps the near-white label ≥4.5:1 (WCAG AA) even when it
+     composites over a pure-white hero photo; the old 0.44 fell to ~3:1. */
+  background: rgba(20, 12, 4, 0.62);
   border: 1px solid rgba(255, 250, 240, 0.5);
   border-radius: 999px;
   cursor: pointer;
   backdrop-filter: blur(3px);
   transition: background-color var(--dur-1) var(--ease);
 }
-.jr-edit:hover { background: rgba(20, 12, 4, 0.66); }
+.jr-edit:hover { background: rgba(20, 12, 4, 0.78); }
 .jr-hero.jr-no-photo .jr-edit {
   color: var(--ink);
   background: var(--paper);

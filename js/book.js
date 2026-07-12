@@ -204,6 +204,11 @@ function buildEntryFace(entry) {
   editBtn.title = 'Edit entry';
   editBtn.setAttribute('aria-label', `Edit “${entry.title || 'Untitled day'}”`);
   editBtn.addEventListener('click', () => bus.emit('compose-open', { entryId: entry.id }));
+  const shareBtn = el('button', 'bk-iconbtn', '↗');
+  shareBtn.type = 'button';
+  shareBtn.title = 'Share this page';
+  shareBtn.setAttribute('aria-label', `Share “${entry.title || 'Untitled day'}”`);
+  shareBtn.addEventListener('click', () => bus.emit('share-entry', { entryId: entry.id }));
   const delBtn = el('button', 'bk-iconbtn bk-iconbtn-delete', '🗑');
   delBtn.type = 'button';
   delBtn.title = 'Delete entry';
@@ -221,7 +226,9 @@ function buildEntryFace(entry) {
       toast('Couldn’t delete that entry. Please try again.', 'error');
     }
   });
-  foot.append(editBtn, delBtn);
+  // shareBtn sits on the same face footer, so syncDesktop()'s inert/aria-hidden
+  // sweep covers it exactly like the edit/delete affordances.
+  foot.append(editBtn, shareBtn, delBtn);
   art.appendChild(foot);
 
   inner.appendChild(art);

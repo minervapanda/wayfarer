@@ -1,0 +1,1 @@
+- 2026-07-12: SKEPTIC review of storycard dateline overflow claim — CONFIRMED. drawDateline() (js/storycard.js:321) has no max-width/wrap/ellipsis; free-text location (maxlength=140) at 30px tracked Georgia can exceed 1080px canvas width, clipping the dateline at both edges. Title/excerpt use wrapLines(); dateline does not. Read-only pass, no code changed.

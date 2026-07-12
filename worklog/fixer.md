@@ -19,3 +19,19 @@
 - Verified: `node --check` clean on all 10 changed JS files; EXIF-date,
   watermark-parse and demo-UUID logic exercised in Node; generated PNG
   favicon validated with sips + visual check.
+
+## 2026-07-12 — Share + Cloudflare gate review fixes (fixer, round 1)
+
+- Applied fixes for all 13 findings from the share-card/Cloudflare review
+  (security, quality, deploy lenses). Full details merged into WORKLOG.md
+  under "Share + Cloudflare gate: review fixes".
+- Files touched: functions/_middleware.js (sanitizeTo control-char open
+  redirect, POST-only /logout with GET confirm page, protocol-conditional
+  Secure cookie), js/sharecard.js (post-await double-open guard),
+  js/storycard.js (bitmap release in finally, dateline ellipsis, photo
+  backfill), js/book.js + js/journal.js (titled share aria-labels),
+  css/book.css (icon-button resting contrast), css/journal.css (hero pill
+  scrim 0.62), wrangler.toml + SETUP-CLOUDFLARE.md (staged dist/ deploys,
+  .dev.vars guidance), SETUP.md (Cloudflare URLs), .gitignore, WORKLOG.md.
+- Verified: `node --check` clean on the 5 changed JS files; sanitizeTo
+  exercised in Node against 13 attack/legit cases (all pass).

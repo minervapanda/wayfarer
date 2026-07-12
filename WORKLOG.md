@@ -60,3 +60,30 @@ Per-agent notes land in `worklog/*.md`; the fix agent merges highlights back her
 - Live-tested at localhost in Chrome: boot, demo trip, cover, TOC, page flips (keyboard), entry collages, compose sheet, journal view — no console errors.
 - Found + fixed one integration race the reviewers missed: `main.js` refreshed `app.entries` asynchronously on 'entries-changed' while views re-rendered synchronously from the stale cache, so demo-load/import/sync-pull never appeared until reload. The catch-all listener now awaits the refresh and re-announces once (`reason: 'cache-refreshed'`, ignored by itself and by sync's push scheduler).
 - Deployed to GitHub Pages: public repo minervapanda/wayfarer, site https://minervapanda.github.io/wayfarer/ (runs in local mode until Supabase credentials land in config.js per SETUP.md).
+
+## 2026-07-12 — Share cards + Cloudflare gate (merged from worklog/*.md)
+
+- **Story-card renderer** (`js/storycard.js`, new): pure canvas-2D, no DOM UI/libs; frozen contract `FORMATS` (1080×1920 story / 1080×1080 square) + `renderStoryCard(entry, fmt) -> { blob, width, height, filename }`, never throws (minimal typographic fallback card). Samples live CSS tokens per render; mulberry32 PRNG seeded from entry.id makes re-renders pixel-identical; curated 1–4-photo polaroid collages with washi tape, postcard motif for photo-less days, Instagram story safe-area honored.
+- **Share UI** (`js/sharecard.js` + `css/share.css`, new; surgical touches to book/journal/main/index.html): bus `'share-entry' { entryId }` from the book's `↗` face button and the journal's hero pill opens the native `#share-modal` dialog; lazy-imports the renderer, caches both formats per session, Web Share Level 2 (`canShare({files})`) with download fallback, aria-live status, textContent-only user strings.
+- **Cloudflare gate** (`functions/_middleware.js` + `wrangler.toml` + `SETUP-CLOUDFLARE.md`, new): standalone Pages Function fronting every request; HMAC-signed 30-day session cookie keyed off SHA-256(SITE_PASSWORD+salt) so rotating the password logs everyone out; constant-time password compare, no-store auth responses, inline cream-paper login page matching the app's tokens; missing-secret 500 setup page.
+- **Integration pass 2**: bus/ID/contract audits green; fixed `refineSkeleton()` reading `FORMATS[fmt].width/.height` where the contract ships `{w, h}`; ARCHITECTURE.md §7 addendum records the sanctioned share-entry event, share-modal IDs, and the Cloudflare hosting files.
+
+## 2026-07-12 — Share + Cloudflare gate: review fixes
+
+**Gate security (`functions/_middleware.js`)**
+- `sanitizeTo()` now also rejects any embedded control character (or backslash) — `/login?to=/%09/evil.com` decoded to `/<TAB>/evil.com`, slipped past the `//` prefix check, and the browser's Location parsing stripped the tab into a protocol-relative `//evil.com` open redirect on successful login. Verified against a 13-case node harness (tab/newline/CR/NUL/DEL/backslash/`//` attacks all return `/`; legit paths pass through).
+- `/logout` is no longer state-changing over GET: a bare GET now renders a small "Close the diary on this device?" confirmation page and only its same-origin POST clears the cookie, so a cross-site link/navigation can't force-logout a victim.
+- The session cookie's `Secure` flag is now derived from the request protocol: always set in production (Pages is https-only), omitted over the plain-http `wrangler pages dev` preview where Safari refuses to store Secure cookies and looped users back to /login forever. Doc note added.
+
+**Share flow quality**
+- `js/sharecard.js`: `openShare()` re-checks the open guard after its `await getEntry()` — a double-click raced both handlers past the pre-await guard, and the loser's second `showModal()` threw, wedging the modal on the skeleton.
+- `js/storycard.js`: decoded ImageBitmaps are released in a `finally` around the draw pipeline (previously only on the success path, so every failed render leaked up to 4 full-size bitmaps per retry); the dateline ellipsizes the free-text location so the tracked `DATE · LOCATION` line can no longer overflow the 1080px canvas; `loadPhotos()` walks all photoIds and stops at 4 *decoded* photos instead of slicing first, so a missing blob early in the list is backfilled by later valid photos.
+
+**A11y / contrast**
+- `css/book.css`: dropped the `.bk-iconbtn` resting `opacity: 0.6` (≈2.4:1 on paper — invisible-by-design never resolved on touch devices); glyphs now sit at full-opacity `--ink-soft` (≈5.4:1, AA) with a hover/focus shift to `--ink`.
+- `css/journal.css`: the hero pill scrim darkened from `rgba(20,12,4,0.44)` to `0.62` so the near-white Share/Edit labels stay ≥4.5:1 even composited over a pure-white photo (hover 0.78).
+- `js/book.js` / `js/journal.js`: share buttons' accessible names now interpolate the entry title (`Share "Kyoto"`) like their Edit/Delete siblings, instead of N identical "Share this page" entries in screen-reader element lists.
+
+**Deploy hygiene**
+- `wrangler.toml` + `SETUP-CLOUDFLARE.md`: deploys now upload a staged `dist/` (index.html, config.js, css/, js/ — functions/ auto-bundled from the repo root) instead of the repo root. Wrangler Pages has no user-configurable ignore, so root deploys would have served ARCHITECTURE.md, worklog/, supabase/schema.sql, legacy/ — and, fatally, a local `.dev.vars` holding SITE_PASSWORD at `/.dev.vars`. The doc names the `.dev.vars` mechanism for the local gate preview and warns explicitly; `.gitignore` gains `.dev.vars`, `.wrangler/`, `dist/`.
+- `SETUP.md`: the Supabase Site URL / Redirect URLs step now points at the Cloudflare Pages address (the retired `minervapanda.github.io/wayfarer/` instruction sent magic links to a dead origin), and step 6 redeploys via SETUP-CLOUDFLARE.md instead of GitHub Pages.
