@@ -8,10 +8,12 @@
 // SVG markup is assembled as a string.
 
 import { app, bus } from './state.js';
-import { listEntries, getBlob } from './store.js';
+import { listEntries, getEntry, saveEntry, getBlob } from './store.js';
 import { esc, fmtDate, blobUrl } from './util.js';
+import * as util from './util.js';
 import { narrativeFor } from './narratives.js';
 import { renderVoicePlayer } from './voice.js';
+import { renderCollage, resolveTemplate, TEMPLATES } from './collage.js';
 
 let root = null;
 let renderSeq = 0;        // guards overlapping async renders
@@ -48,6 +50,25 @@ function placeOf(name) {
 function countryOf(name) {
   const parts = String(name || '').split(',');
   return parts.length > 1 ? parts[parts.length - 1].trim() : '';
+}
+
+/** Display title for an entry. Prefers util.entryDisplayTitle (shipped by the
+    util owner in this round); falls back to the journal's historical rule so
+    nothing breaks if this module lands first. */
+function displayTitle(entry) {
+  if (typeof util.entryDisplayTitle === 'function') {
+    try {
+      const t = util.entryDisplayTitle(entry);
+      if (t) return t;
+    } catch { /* fall through to the local rule */ }
+  }
+  return entry.title || placeOf(entry.location && entry.location.name) || 'Untitled memory';
+}
+
+/** Shared app-wide definition: photo-only = blank story + at least one photo.
+    These entries render as collage chapters instead of editorial chapters. */
+function isPhotoOnly(entry) {
+  return (entry.story || '').trim() === '' && (entry.photoIds || []).length >= 1;
 }
 
 function fmtCoord(lat, lon) {
@@ -316,12 +337,14 @@ function overviewMap(entries) {
 /* ---------------- chapters ---------------- */
 
 function chapterEl(entry, index) {
+  if (isPhotoOnly(entry)) return collageChapterEl(entry, index);
+
   const art = el('article', 'jr-chapter paper');
   art.id = 'jr-entry-' + entry.id;
 
   const loc = entry.location || {};
   const photoIds = entry.photoIds || [];
-  const headingText = entry.title || placeOf(loc.name) || 'Untitled memory';
+  const headingText = displayTitle(entry);
 
   /* ----- hero band ----- */
   const hero = el('div', 'jr-hero');
@@ -450,6 +473,255 @@ function chapterEl(entry, index) {
   return art;
 }
 
+/* ---------------- collage chapters (photo-only entries) ----------------
+   Same header treatment as an editorial chapter (eyebrow, display title,
+   location line, share/edit pills, coords card) but the body is one
+   full-width collage rendered by the collage engine (./collage.js). No
+   narrative block, no "in your own words", no filmstrip. */
+
+/** TEMPLATES normalized to an ordered [{ key, label }] list, whatever shape
+    the engine exports (object map of key→{label}/key→string, or array). */
+function templateList() {
+  const capitalize = (k) => String(k).charAt(0).toUpperCase() + String(k).slice(1);
+  try {
+    if (Array.isArray(TEMPLATES)) {
+      return TEMPLATES.map((t) => (typeof t === 'string'
+        ? { key: t, label: capitalize(t) }
+        : { key: t.key || t.id, label: t.label || capitalize(t.key || t.id) }
+      )).filter((t) => t.key);
+    }
+    if (TEMPLATES && typeof TEMPLATES === 'object') {
+      return Object.entries(TEMPLATES).map(([key, v]) => ({
+        key,
+        label: typeof v === 'string' ? v : (v && v.label) || capitalize(key)
+      }));
+    }
+  } catch { /* engine not shaped as expected — chip degrades below */ }
+  return [];
+}
+
+/** Chip label for the current template; 'auto' shows what auto resolved to. */
+function styleLabelFor(templateKey, photos, seed) {
+  const list = templateList();
+  const capitalize = (k) => String(k).charAt(0).toUpperCase() + String(k).slice(1);
+  const nameOf = (k) => (list.find((t) => t.key === k) || {}).label || capitalize(k);
+  let label = nameOf(templateKey);
+  if (templateKey === 'auto' && photos && photos.length) {
+    try {
+      const resolved = resolveTemplate(templateKey, photos, seed);
+      if (resolved && resolved !== 'auto') label = `Auto · ${nameOf(resolved)}`;
+    } catch { /* keep plain 'Auto' */ }
+  }
+  return label;
+}
+
+function collageChapterEl(entry, index) {
+  const art = el('article', 'jr-chapter jr-co paper');
+  art.id = 'jr-entry-' + entry.id;
+
+  const loc = entry.location || {};
+  const photoIds = (entry.photoIds || []).slice();
+  const headingText = displayTitle(entry);
+  const template = (entry.collage && entry.collage.template) || 'auto';
+
+  /* ----- header: same treatment as the editorial chapter, on paper ----- */
+  const head = el('header', 'jr-co-head');
+  head.append(
+    el('p', 'jr-co-eyebrow', `Chapter ${index + 1} · ${fmtDate(entry.dateISO) || 'Undated'}`),
+    el('h3', 'jr-co-title', headingText)
+  );
+  const subParts = [];
+  if (loc.name) subParts.push(loc.name);
+  subParts.push(`${photoIds.length} photo${photoIds.length !== 1 ? 's' : ''}`);
+  if (entry.voiceId) subParts.push('voice note');
+  head.appendChild(el('p', 'jr-co-sub', subParts.join(' · ')));
+
+  const editBtn = el('button', 'jr-edit', 'Edit');
+  editBtn.type = 'button';
+  editBtn.setAttribute('aria-label', `Edit “${headingText}”`);
+  editBtn.addEventListener('click', () => bus.emit('compose-open', { entryId: entry.id }));
+  const shareBtn = el('button', 'jr-edit jr-share', '↗');
+  shareBtn.type = 'button';
+  shareBtn.title = 'Share this page';
+  shareBtn.setAttribute('aria-label', `Share “${headingText}”`);
+  shareBtn.addEventListener('click', () => bus.emit('share-entry', { entryId: entry.id }));
+  const actions = el('div', 'jr-actions');
+  actions.append(shareBtn, editBtn);
+  head.appendChild(actions);
+  art.appendChild(head);
+
+  /* ----- full-width collage area ----- */
+  const area = el('div', 'jr-co-area');
+  const loading = el('p', 'jr-co-state', 'Arranging the collage…');
+  loading.setAttribute('role', 'status');
+  area.appendChild(loading);
+  art.appendChild(area);
+
+  /* ----- footer: style switcher chip + coords card ----- */
+  const foot = el('div', 'jr-co-foot');
+  const chip = buildStyleChip(entry, template);
+  foot.appendChild(chip.el);
+  if (typeof loc.lat === 'number' && typeof loc.lon === 'number' &&
+      Number.isFinite(loc.lat) && Number.isFinite(loc.lon)) {
+    const mini = el('div', 'jr-minimap');
+    mini.append(el('span', 'jr-minimap-pin'), el('span', 'jr-minimap-coords', fmtCoord(loc.lat, loc.lon)));
+    foot.appendChild(mini);
+  }
+  art.appendChild(foot);
+
+  /* ----- voice note (photo-only entries can still carry one) ----- */
+  if (entry.voiceId) {
+    const voiceWrap = el('div', 'jr-co-voice');
+    voiceWrap.appendChild(el('p', 'script jr-note-label', 'a voice from the road'));
+    const mount = el('div', 'jr-voice-mount');
+    voiceWrap.appendChild(mount);
+    getBlob(entry.voiceId).then((rec) => {
+      if (rec && rec.blob) {
+        try { renderVoicePlayer(mount, rec.blob); } catch { voiceWrap.remove(); }
+      } else {
+        voiceWrap.remove();
+      }
+    }).catch(() => voiceWrap.remove());
+    art.appendChild(voiceWrap);
+  }
+
+  hydrateCollage(entry, { area, chip, headingText, photoIds, template });
+  return art;
+}
+
+/** Load the entry's photo blobs, then hand them to the collage engine. */
+async function hydrateCollage(entry, { area, chip, headingText, photoIds, template }) {
+  const seq = renderSeq; // bail if the journal re-rendered while we loaded
+
+  let recs;
+  try {
+    recs = await Promise.all(photoIds.map((id) => getBlob(id).catch(() => undefined)));
+  } catch {
+    recs = [];
+  }
+  if (seq !== renderSeq) return;
+
+  const photos = [];
+  const ids = [];
+  recs.forEach((rec, i) => {
+    if (rec && rec.blob) {
+      ids.push(photoIds[i]);
+      photos.push({
+        id: photoIds[i],
+        url: blobUrl(photoIds[i], rec.blob),
+        w: rec.w || 0,
+        h: rec.h || 0,
+        orient: orientOf(rec.w, rec.h),
+        alt: ''
+      });
+    }
+  });
+  photos.forEach((p, i) => { p.alt = `${headingText} — photo ${i + 1} of ${photos.length}`; });
+
+  area.textContent = '';
+  if (!photos.length) {
+    const gone = el('p', 'jr-co-state', 'These photos are no longer in this browser’s storage.');
+    area.appendChild(gone);
+    chip.disable();
+    return;
+  }
+
+  chip.ready(photos);
+
+  const mount = el('div', 'jr-co-mount');
+  area.appendChild(mount);
+  const onPhotoClick = (idx) => {
+    lightbox?.open(ids, idx, captionFor(entry, headingText));
+  };
+  try {
+    const out = renderCollage(mount, photos, { template, seed: entry.id, onPhotoClick });
+    const node = out && typeof out.then === 'function' ? await out : out;
+    if (seq !== renderSeq) return;
+    if (node instanceof Node && node !== mount && !mount.contains(node)) mount.appendChild(node);
+    if (!mount.childNodes.length) throw new Error('collage engine rendered nothing');
+  } catch (err) {
+    if (seq !== renderSeq) return;
+    console.error('Wayfarer journal: collage engine failed, using plain grid', err);
+    mount.textContent = '';
+    fallbackCollage(mount, photos, onPhotoClick);
+  }
+}
+
+/** Last-resort layout when the engine throws: an honest, even photo grid that
+    still opens the lightbox — the chapter never renders broken. */
+function fallbackCollage(mount, photos, onPhotoClick) {
+  const grid = el('div', 'jr-co-fallback');
+  grid.setAttribute('role', 'list');
+  photos.forEach((p, idx) => {
+    const btn = el('button', 'jr-thumb');
+    btn.type = 'button';
+    btn.setAttribute('role', 'listitem');
+    btn.setAttribute('aria-label', p.alt || `View photo ${idx + 1}`);
+    btn.dataset.orient = p.orient;
+    const img = el('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.src = p.url;
+    btn.appendChild(img);
+    btn.addEventListener('click', () => onPhotoClick(idx));
+    grid.appendChild(btn);
+  });
+  mount.appendChild(grid);
+}
+
+/** The quiet style-switcher chip. Cycles through TEMPLATES; the choice is
+    persisted on the entry via saveEntry, and the 'entries-changed' re-render
+    (which keeps scroll) repaints the collage in the new style. */
+function buildStyleChip(entry, template) {
+  const chipEl = el('button', 'jr-co-style');
+  chipEl.type = 'button';
+  chipEl.disabled = true; // enabled once photos are loaded
+  const mark = el('span', 'jr-co-style-mark', '✦');
+  mark.setAttribute('aria-hidden', 'true');
+  const labelEl = el('span', 'jr-co-style-label');
+  labelEl.append('Style: ', el('b', null, '…'));
+  chipEl.append(mark, labelEl);
+  chipEl.setAttribute('aria-label', 'Change collage style');
+
+  const setLabel = (text) => {
+    labelEl.textContent = '';
+    labelEl.append('Style: ', el('b', null, text));
+    chipEl.setAttribute('aria-label', `Change collage style — currently ${text}`);
+  };
+
+  chipEl.addEventListener('click', async () => {
+    const keys = templateList().map((t) => t.key);
+    if (!keys.length) return;
+    const next = keys[(keys.indexOf(template) + 1) % keys.length];
+    chipEl.disabled = true;
+    try {
+      // Re-read the entry so a concurrent edit/sync isn't clobbered by our
+      // stale render-time snapshot.
+      const fresh = await getEntry(entry.id);
+      if (!fresh) throw new Error('entry disappeared');
+      fresh.collage = { template: next };
+      await saveEntry(fresh); // stamps updatedAt + dirty — style syncs for free
+      bus.emit('entries-changed', { reason: 'save' });
+    } catch (err) {
+      console.error('Wayfarer journal: could not save collage style', err);
+      chipEl.disabled = false;
+      bus.emit('toast', { message: 'Couldn’t change the collage style.', kind: 'error' });
+    }
+  });
+
+  return {
+    el: chipEl,
+    ready(photos) {
+      if (!templateList().length) { chipEl.hidden = true; return; }
+      setLabel(styleLabelFor(template, photos, entry.id));
+      chipEl.disabled = false;
+    },
+    disable() {
+      chipEl.disabled = true;
+    }
+  };
+}
+
 function storyBlock(story) {
   const div = el('div', 'jr-story');
   for (const para of story.split(/\n{2,}/)) div.appendChild(el('p', null, para));
@@ -459,7 +731,8 @@ function storyBlock(story) {
 function captionFor(entry, headingText) {
   const bits = [headingText];
   const date = fmtDate(entry.dateISO);
-  if (date) bits.push(date);
+  // Untitled entries use the date as their display title — don't say it twice.
+  if (date && date !== headingText) bits.push(date);
   return bits.join(' — ');
 }
 

@@ -395,6 +395,134 @@
 :root[data-app-theme="scrapbook"] .jr-thumb:nth-child(3n) { transform: rotate(-1deg); }
 :root[data-app-theme="scrapbook"] .jr-thumb:hover { transform: scale(1.05) rotate(0deg); }
 
+/* ---------------- collage chapters (photo-only entries) ----------------
+   Rendered by js/journal.js when an entry has photos but no story text: the
+   editorial header treatment on cream paper, then one full-width collage
+   (js/collage.js renders into .jr-co-mount), then a footer with the style
+   switcher chip and the coords card. */
+
+.jr-co-head {
+  position: relative; /* anchors the absolute .jr-actions pill cluster */
+  padding: 24px clamp(16px, 3.5vw, 32px) 18px;
+  /* keep the title clear of the share + edit pills */
+  padding-right: clamp(140px, 22vw, 190px);
+  border-bottom: 1px dashed var(--line);
+}
+.jr-co-eyebrow {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 4px;
+}
+.jr-co-title {
+  font-size: clamp(24px, 4vw, 34px);
+  color: var(--ink);
+  line-height: 1.12;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.jr-co-sub {
+  color: var(--ink-soft);
+  font-size: 13.5px;
+  font-style: italic;
+  letter-spacing: 0.3px;
+  margin: 6px 0 0;
+}
+/* pills sit on paper here, not on a photo scrim — reuse the quiet variant */
+.jr-co-head .jr-edit {
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--line);
+  backdrop-filter: none;
+}
+.jr-co-head .jr-edit:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--paper);
+}
+
+/* the collage itself */
+.jr-co-area {
+  padding: clamp(14px, 3vw, 26px) clamp(12px, 3vw, 28px);
+  min-height: 160px;
+}
+.jr-co-mount { width: 100%; }
+.jr-co-state {
+  margin: 0;
+  padding: 44px 16px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+/* fallback grid if the collage engine is unavailable — reuses the filmstrip
+   frame look but flows as a responsive grid */
+.jr-co-fallback {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
+  gap: 12px;
+}
+.jr-co-fallback .jr-thumb {
+  width: 100%;
+  height: auto;
+}
+
+/* footer: style chip + coords card */
+.jr-co-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 clamp(16px, 3.5vw, 32px) 22px;
+}
+.jr-co-style {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 18px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--paper) 70%, var(--paper-edge) 30%);
+  border: 1.5px dashed var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.jr-co-style:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+.jr-co-style:hover:not(:disabled) .jr-co-style-label b { color: var(--accent); }
+.jr-co-style:focus-visible { border-radius: 999px; }
+.jr-co-style:disabled { cursor: default; opacity: 0.55; }
+.jr-co-style-mark { color: var(--accent); font-size: 14px; }
+.jr-co-style-label b {
+  font-weight: 600;
+  color: var(--ink);
+  transition: color var(--dur-1) var(--ease);
+}
+.jr-co-foot .jr-minimap { padding: 9px 14px; }
+
+/* voice note under a collage chapter */
+.jr-co-voice {
+  margin: 0 clamp(16px, 3.5vw, 32px);
+  padding: 16px 0 22px;
+  border-top: 1px solid var(--line);
+}
+
+/* narrow screens: pills flow under the sub line instead of overlapping */
+@media (max-width: 560px) {
+  .jr-co-head { padding-right: clamp(16px, 3.5vw, 32px); }
+  .jr-co-head .jr-actions {
+    position: static;
+    margin-top: 12px;
+  }
+  .jr-co-foot { justify-content: center; }
+}
+
 /* ---------------- lightbox ---------------- */
 
 .jr-lightbox {

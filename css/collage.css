@@ -1,0 +1,312 @@
+/* collage.css — collage templates for photo-only entries.
+   OWNER: collage builder (js/collage.js + css/collage.css).
+   Injected by js/collage.js itself (index.html is frozen); everything renders
+   inside .clg on cream chapter paper. Only base.css tokens — no raw theme
+   colors. The few literal colors below are photographic material (polaroid
+   white, film base, film-edge amber, print shadows), constant across themes
+   by nature, and are annotated where they carry text contrast.
+
+   GEOMETRY CONTRACT with js/collage.js — the scatter/wall solver assumes:
+     scatter .clg-mat padding = 4.5% 4.5% 16%   (h = w * (0.205 + 0.91/A))
+     wall    .clg-mat padding = 4%              (h = w * (0.08  + 0.92/A))
+   Change these together or prints will overflow their container. */
+
+.clg { width: 100%; }
+
+.clg-empty {
+  margin: 0;
+  padding: 28px 8px;
+  text-align: center;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+/* ---------------- the print button (every template) ---------------- */
+
+.clg-ph {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  transform: rotate(var(--tilt, 0deg));
+  transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.clg-ph img {
+  display: block;
+  pointer-events: none; /* clicks land on the button, no image drag ghost */
+}
+.clg-ph:hover {
+  transform: translateY(-4px) scale(1.02) rotate(var(--tilt, 0deg));
+  z-index: 50;
+}
+.clg-ph:focus-visible {
+  box-shadow: var(--focus-ring);
+  z-index: 60;
+  border-radius: 3px;
+}
+/* Reduced motion: prints stay tilted but nothing animates or lifts. */
+@media (prefers-reduced-motion: reduce) {
+  .clg-ph { transition: none; }
+  .clg-ph:hover { transform: rotate(var(--tilt, 0deg)); }
+}
+
+/* ---------------- shared print chrome ---------------- */
+
+/* Polaroid / pinned-print mat. Percentage padding resolves against the
+   button's width — see the geometry contract in the header comment. */
+.clg-mat {
+  display: block;
+  padding: 4.5% 4.5% 16%;
+  /* polaroid stock: warm near-white in every theme */
+  background: color-mix(in srgb, var(--paper) 42%, #fff);
+  border-radius: 2px;
+  box-shadow: 0 3px 9px rgba(30, 20, 8, 0.28), 0 1px 3px rgba(30, 20, 8, 0.18);
+  transition: box-shadow var(--dur-1) var(--ease);
+}
+.clg-print:hover .clg-mat {
+  box-shadow: 0 10px 22px rgba(30, 20, 8, 0.3), 0 2px 6px rgba(30, 20, 8, 0.2);
+}
+
+/* photo window — orientation buckets shared app-wide */
+.clg-win {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-edge); /* visible while the image decodes */
+}
+.clg-print.portrait  .clg-win { aspect-ratio: 3 / 4; }
+.clg-print.landscape .clg-win { aspect-ratio: 4 / 3; }
+.clg-print.square    .clg-win { aspect-ratio: 1 / 1; }
+.clg-win img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* washi-tape strip across the top edge */
+.clg-tape {
+  position: absolute;
+  top: -7px;
+  left: 50%;
+  width: 46%;
+  min-width: 34px;
+  height: 17px;
+  transform: translateX(-50%) rotate(var(--tape-tilt, -3deg));
+  background:
+    repeating-linear-gradient(105deg, rgba(255, 255, 255, 0.28) 0 3px, transparent 3px 7px),
+    var(--tape);
+  box-shadow: 0 1px 2px rgba(30, 20, 8, 0.18);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* kraft photo-corner triangles in the window's four corners */
+.clg-cornerlay {
+  --clg-corner: color-mix(in srgb, var(--paper) 80%, var(--ink));
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(135deg, var(--clg-corner) 9px, transparent 9.5px),
+    linear-gradient(225deg, var(--clg-corner) 9px, transparent 9.5px),
+    linear-gradient(45deg,  var(--clg-corner) 9px, transparent 9.5px),
+    linear-gradient(315deg, var(--clg-corner) 9px, transparent 9.5px);
+  background-size: 19px 19px;
+  background-repeat: no-repeat;
+  background-position: top left, top right, bottom left, bottom right;
+}
+
+/* simple framed print (mosaic + grid): thin near-white border, hairline edge */
+.clg-framed {
+  background: color-mix(in srgb, var(--paper) 40%, #fff);
+  border: 3px solid color-mix(in srgb, var(--paper) 40%, #fff);
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px var(--line), var(--shadow-soft);
+}
+.clg-framed img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: var(--paper-edge);
+  border-radius: 1px;
+}
+.clg-framed:hover { box-shadow: 0 0 0 1px var(--line), var(--shadow); }
+
+/* ---------------- scatter (Scrapbook) ---------------- */
+
+.clg--scatter {
+  position: relative;
+  overflow: hidden; /* containment guarantee; solver keeps margins clear */
+  border-radius: var(--radius-sm);
+}
+.clg-print {
+  position: absolute; /* left/top/width set inline by the solver */
+  z-index: var(--z, 1); /* seeded depth; hover (50) / focus (60) still win */
+}
+
+/* ---------------- mosaic ---------------- */
+
+.clg--mosaic {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+.clg--mosaic[data-hero="portrait"] {
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+}
+.clg--mosaic[data-solo="1"] {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 720px;
+  margin-inline: auto;
+}
+.clg-hero { width: 100%; }
+.clg-hero.portrait  { aspect-ratio: 3 / 4; }
+.clg-hero.landscape { aspect-ratio: 4 / 3; }
+.clg-hero.square    { aspect-ratio: 1 / 1; }
+
+.clg-sats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: dense;
+  gap: 9px;
+  min-width: 0;
+}
+.clg-sat { width: 100%; }
+.clg-sat.portrait  { aspect-ratio: 3 / 4; }
+.clg-sat.landscape { aspect-ratio: 4 / 3; grid-column: span 2; }
+.clg-sat.square    { aspect-ratio: 1 / 1; }
+
+@media (max-width: 560px) {
+  .clg--mosaic,
+  .clg--mosaic[data-hero="portrait"] { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------------- grid (Contact sheet) ----------------
+   Justified rows: fixed row height; width and flex-grow both follow the true
+   aspect (--ar set inline), so rows fill flush while every frame keeps its
+   proportions. The spacer soaks up the final row. */
+
+.clg--grid {
+  --clg-row-h: 172px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.clg-cell {
+  height: var(--clg-row-h);
+  width: calc(var(--ar, 1) * var(--clg-row-h));
+  flex-grow: calc(var(--ar, 1) * 100);
+  box-shadow: 0 0 0 1px var(--line); /* quieter than .clg-framed at 30+ prints */
+}
+.clg-cell:hover { box-shadow: 0 0 0 1px var(--line), var(--shadow-soft); }
+.clg-rowspacer {
+  flex-grow: 1000000;
+  height: 0;
+}
+@media (max-width: 560px) {
+  .clg--grid { --clg-row-h: 126px; gap: 4px; }
+}
+
+/* ---------------- filmstrip ---------------- */
+
+.clg--filmstrip {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.clg-strip {
+  --clg-film-h: 148px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  overflow-x: auto; /* wide strips pan inside their own band */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  border-radius: 6px;
+  /* film base: near-black warmed by the theme's ink */
+  background-color: color-mix(in srgb, var(--ink) 80%, #0d0803);
+  /* sprocket holes top + bottom; attachment:local keeps them on the film
+     while a long strip scrolls */
+  background-image:
+    radial-gradient(circle, var(--paper) 2.3px, transparent 2.9px),
+    radial-gradient(circle, var(--paper) 2.3px, transparent 2.9px);
+  background-size: 17px 9px, 17px 9px;
+  background-position: left 8px top 5px, left 8px bottom 5px;
+  background-repeat: repeat-x, repeat-x;
+  background-attachment: local, local;
+  box-shadow: var(--shadow-soft);
+}
+.clg-frame {
+  position: relative;
+  flex: none;
+  height: var(--clg-film-h);
+  width: calc(var(--ar, 1) * var(--clg-film-h));
+  border: 2px solid color-mix(in srgb, var(--ink) 55%, #241505); /* sepia frame tint */
+  border-radius: 3px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ink) 70%, #241505);
+}
+.clg-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: sepia(0.14) contrast(1.03);
+}
+.clg-frame:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); }
+.clg-frameno {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  /* film-edge amber on the dark frame: ≈9:1, decorative and aria-hidden */
+  color: rgba(238, 205, 138, 0.95);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  pointer-events: none;
+}
+@media (max-width: 560px) {
+  .clg-strip { --clg-film-h: 118px; gap: 9px; padding: 17px 12px; }
+}
+
+/* ---------------- wall (Pinboard) ---------------- */
+
+.clg--wall {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  /* cork derived from theme tokens: warm tan (passport/scrapbook), soft
+     greige felt (minimal) — correct in all three paper themes */
+  background-color: color-mix(in srgb, var(--paper-edge) 70%, var(--ink-soft) 30%);
+  background-image: var(--grain);
+  border: 1px solid color-mix(in srgb, var(--paper-edge) 45%, var(--ink-soft) 55%);
+  box-shadow: inset 0 2px 10px rgba(31, 20, 8, 0.22);
+}
+.clg--wall .clg-mat {
+  padding: 4%; /* geometry contract: h = w * (0.08 + 0.92/A) */
+  background: color-mix(in srgb, var(--paper) 45%, #fff);
+}
+.clg-pin {
+  position: absolute;
+  top: -5px;
+  left: calc(50% - 5.5px);
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 34% 30%,
+    color-mix(in srgb, var(--accent) 55%, #fff),
+    var(--accent) 55%,
+    color-mix(in srgb, var(--accent) 65%, #000) 100%
+  );
+  box-shadow: 0 2px 3px rgba(20, 10, 2, 0.4);
+  pointer-events: none;
+  z-index: 2;
+}

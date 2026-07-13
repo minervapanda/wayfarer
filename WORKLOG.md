@@ -130,3 +130,26 @@ Fixtures: 4 generated JPEGs with real EXIF (GPS + DateTimeOriginal) in testdata/
 | Voice dictation/recording | NOT auto-tested (OS mic permission needs a human) — manual test recommended |
 
 Outstanding to go live: user must complete `npx wrangler@4 login` and `npx supabase login`; then deploy, provision Supabase (schema.sql + bucket), fill config.js, flip GitHub repo private.
+
+## 2026-07-12 — Collage entries (photo-only) + E2E
+
+Workflow caveat recorded honestly: the 3 builders completed but BOTH review agents
+stalled (6 retries each), so this round shipped with zero agent review. Compensated
+with a manual contract audit + full live E2E; two cosmetic dupes found and fixed by
+hand (lightbox caption and TOC sub-line repeated the date for untitled entries).
+
+Feature: entries with photos and no story render as journal COLLAGE CHAPTERS.
+- js/collage.js + css/collage.css: template engine (auto/scatter/mosaic/contact
+  sheet/filmstrip/pinboard), aspect-aware, deterministic per entry id, self-injects
+  its stylesheet, photos are keyboard-focusable buttons into the lightbox.
+- journal.js: collage chapter (header + date/coords, no empty narrative), style
+  chip cycles templates, choice persists via entry.collage.template (syncs as a
+  normal save). Fallback plain grid if the engine ever throws.
+- entryDisplayTitle(): untitled entries show place or date everywhere (book faces,
+  TOC, share cards, aria-labels); photo-only book faces say "No story written for
+  this day — the photos speak."
+
+E2E (Chrome, localhost gate): photo-only save (no title/story/location) PASS ·
+auto → Scrapbook collage PASS · chip cycle through all 5 templates PASS ·
+lightbox from collage PASS (caption fixed) · template choice persists across
+reload PASS ("wall") · TOC/book-face fallback titles PASS · no console errors.

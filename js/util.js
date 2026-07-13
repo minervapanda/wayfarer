@@ -29,6 +29,29 @@ export function fmtDate(dateISO, opts) {
   return date.toLocaleDateString(undefined, opts || { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+/**
+ * Human display title for an entry — never blank, so untitled (e.g.
+ * photo-only) entries still read well in the book, TOC, share cards and
+ * aria-labels. Falls back through: trimmed title → short location name
+ * (text before the first comma, 'Kyoto, Japan' → 'Kyoto') → the entry's
+ * date ('April 3, 2026') → 'A day worth keeping'.
+ * Returns a PLAIN string — escape nothing here; callers use textContent
+ * or esc() as appropriate.
+ */
+export function entryDisplayTitle(entry) {
+  const e = entry || {};
+  const title = String(e.title ?? '').trim();
+  if (title) return title;
+  const loc = String((e.location && e.location.name) ?? '').trim();
+  if (loc) {
+    const short = loc.split(',')[0].trim();
+    if (short) return short;
+  }
+  const date = fmtDate(e.dateISO, { year: 'numeric', month: 'long', day: 'numeric' });
+  if (date) return date;
+  return 'A day worth keeping';
+}
+
 export function debounce(fn, ms) {
   let t = null;
   const wrapped = (...args) => {

@@ -14,7 +14,7 @@
 // failure falls back to a minimal typographic card.
 
 import { getBlob } from './store.js';
-import { blobUrl } from './util.js';
+import { blobUrl, entryDisplayTitle } from './util.js';
 
 export const FORMATS = {
   story: { w: 1080, h: 1920, label: 'Story 9:16' },
@@ -180,7 +180,9 @@ async function renderWithPhotos(e, fmtKey, photos) {
     y += 26;
   }
 
-  const titleText = (str(e.title) || str(e.location && e.location.name) || 'A remembered day').trim();
+  // Shared fallback chain (title → short place → date → gentle default) so
+  // untitled photo-only entries share under the same name they wear in-app.
+  const titleText = entryDisplayTitle(e);
   const titleSize = photos.length === 0 ? Math.round(L.title * 1.15) : L.title;
   const titleLH = photos.length === 0 ? Math.round(L.titleLH * 1.15) : L.titleLH;
   ctx.font = `700 ${titleSize}px ${SERIF}`;
@@ -231,7 +233,10 @@ async function renderWithPhotos(e, fmtKey, photos) {
   /* ---- middle: polaroid collage or postcard motif ---- */
   let exFirstBaseline = zone.y + zone.h + GAP + L.excerpt;
   if (photos.length) {
-    const col = layoutCollage(photos, zone, rng);
+    // Photo-only cards (no excerpt at all): the zone already stretches to the
+    // footer, and the prints themselves get a slightly larger unit cap — the
+    // photos ARE the story. Containment constraints still bound the scale.
+    const col = layoutCollage(photos, zone, rng, excerpt ? 1 : 1.08);
     // Band the content around the collage's REAL height: hug the excerpt to
     // the lowest rotated print edge and center the leftover air, so prints
     // and text never collide whatever the orientation mix.
@@ -287,7 +292,7 @@ async function renderMinimal(e, fmtKey) {
   ctx.fillStyle = FALLBACK_TOKENS.ink;
   ctx.textAlign = 'center';
   ctx.font = `700 56px ${SERIF}`;
-  const title = (str(e.title) || str(e.location && e.location.name) || 'A remembered day').trim();
+  const title = entryDisplayTitle(e);
   const lines = wrapLines(ctx, title, W - 160, 2);
   let y = H / 2 - ((lines.length - 1) * 68) / 2;
   for (const line of lines) { ctx.fillText(line, W / 2, y); y += 68; }
@@ -478,7 +483,7 @@ function specsFor(n, classes, zone) {
 // the zone, so prints can never wander into the title, excerpt or footer
 // bands or out of the format's safe area. Returns { prints, top, bottom } —
 // top/bottom are the collage's true vertical extent for banding.
-function layoutCollage(photos, zone, rng) {
+function layoutCollage(photos, zone, rng, unitBoost = 1) {
   const n = Math.min(photos.length, 4);
   const classes = photos.slice(0, n).map(orientationOf);
   const specs = specsFor(n, classes, zone);
@@ -508,7 +513,7 @@ function layoutCollage(photos, zone, rng) {
   // rotated frame inside the zone, capped per count so collages keep air.
   // The last print carries the washi tape, whose overhang above the frame
   // counts toward its top extent — tape must clear the title band too.
-  let k = UNIT_CAP[n] * Math.min(zone.w, zone.h);
+  let k = UNIT_CAP[n] * unitBoost * Math.min(zone.w, zone.h);
   for (let i = 0; i < prints.length; i++) {
     const p = prints[i];
     const ex = extentX(p);

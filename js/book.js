@@ -11,7 +11,7 @@
 
 import { app, bus } from './state.js';
 import { listEntries, getBlob, softDeleteEntry } from './store.js';
-import { fmtDate, blobUrl, toast, confirmDialog } from './util.js';
+import { fmtDate, blobUrl, toast, confirmDialog, entryDisplayTitle } from './util.js';
 import { renderVoicePlayer } from './voice.js';
 import { loadDemo } from './demo.js';
 
@@ -123,9 +123,13 @@ function fillTocRows(tocFace) {
     const li = el('li');
     const row = el('button', 'bk-toc-row');
     row.type = 'button';
-    const title = e.title || 'Untitled day';
+    // Untitled (e.g. photo-only) entries fall back to place / date instead of blank.
+    const title = entryDisplayTitle(e);
     row.setAttribute('aria-label', `Go to page ${face.pageNo}: ${title}`);
-    const sub = [fmtDate(e.dateISO), e.location && e.location.name].filter(Boolean).join(' · ');
+    const sub = [fmtDate(e.dateISO), e.location && e.location.name]
+      .filter(Boolean)
+      .filter((part) => part !== title) // untitled entries use date/place AS the title — don't repeat it
+      .join(' · ');
     row.append(
       el('span', 'bk-toc-title', title),
       el('span', 'bk-toc-sub', sub),
@@ -141,7 +145,9 @@ function fillTocRows(tocFace) {
 function buildEntryFace(entry) {
   const inner = el('div', 'bk-face-inner');
   const art = el('article', 'bk-entry');
-  art.setAttribute('aria-label', entry.title || 'Diary entry');
+  // Display title never blank: title → short place → date → gentle fallback.
+  const displayTitle = entryDisplayTitle(entry);
+  art.setAttribute('aria-label', displayTitle);
 
   // — collage (skeleton now, photos hydrate async) —
   const n = entry.photoIds.length;
@@ -175,10 +181,14 @@ function buildEntryFace(entry) {
 
   // — heading + meta —
   const head = el('header', 'bk-entry-head');
-  head.appendChild(el('h3', 'bk-h', entry.title || 'Untitled day'));
+  head.appendChild(el('h3', 'bk-h', displayTitle));
   const meta = el('p', 'bk-meta');
   const dateStr = fmtDate(entry.dateISO);
-  if (dateStr) meta.appendChild(el('span', null, dateStr));
+  // When the heading itself fell back to the date (no title, no location),
+  // don't echo the same date again on the meta line right beneath it.
+  const titleIsDate = dateStr
+    && displayTitle === fmtDate(entry.dateISO, { year: 'numeric', month: 'long', day: 'numeric' });
+  if (dateStr && !titleIsDate) meta.appendChild(el('span', null, dateStr));
   if (entry.location && entry.location.name) {
     const pin = el('span', 'bk-pin', '⌖');
     pin.setAttribute('aria-hidden', 'true');
@@ -216,20 +226,20 @@ function buildEntryFace(entry) {
   const editBtn = el('button', 'bk-iconbtn', '✎');
   editBtn.type = 'button';
   editBtn.title = 'Edit entry';
-  editBtn.setAttribute('aria-label', `Edit “${entry.title || 'Untitled day'}”`);
+  editBtn.setAttribute('aria-label', `Edit “${displayTitle}”`);
   editBtn.addEventListener('click', () => bus.emit('compose-open', { entryId: entry.id }));
   const shareBtn = el('button', 'bk-iconbtn', '↗');
   shareBtn.type = 'button';
   shareBtn.title = 'Share this page';
-  shareBtn.setAttribute('aria-label', `Share “${entry.title || 'Untitled day'}”`);
+  shareBtn.setAttribute('aria-label', `Share “${displayTitle}”`);
   shareBtn.addEventListener('click', () => bus.emit('share-entry', { entryId: entry.id }));
   const delBtn = el('button', 'bk-iconbtn bk-iconbtn-delete', '🗑');
   delBtn.type = 'button';
   delBtn.title = 'Delete entry';
-  delBtn.setAttribute('aria-label', `Delete “${entry.title || 'Untitled day'}”`);
+  delBtn.setAttribute('aria-label', `Delete “${displayTitle}”`);
   delBtn.addEventListener('click', async () => {
     const ok = await confirmDialog(
-      `Tear this page out of your book? “${entry.title || 'Untitled day'}” will be removed.`, true);
+      `Tear this page out of your book? “${displayTitle}” will be removed.`, true);
     if (!ok) return;
     try {
       await softDeleteEntry(entry.id);
@@ -513,7 +523,7 @@ function spreadLabel() {
   const l = 2 * pos - 1, r = 2 * pos;
   const name = (f) =>
     f.type === 'toc' ? 'Contents'
-      : f.type === 'entry' ? (entries.find((e) => e.id === f.entryId)?.title || 'Untitled day')
+      : f.type === 'entry' ? entryDisplayTitle(entries.find((e) => e.id === f.entryId))
       : f.type === 'closing' ? 'The end' : '';
   const parts = [name(faces[l]), name(faces[r])].filter(Boolean).join(' · ');
   return `Pages ${l}–${r} of ${last}${parts ? ' — ' + parts : ''}`;
@@ -690,7 +700,7 @@ function setMobileFace(idx) {
   const label = idx === 0 ? 'Cover' : `Page ${idx} of ${faces.length - 1}`;
   indicatorEl.textContent = label;
   liveEl.textContent = label + (face.type === 'entry'
-    ? ' — ' + (entries.find((e) => e.id === face.entryId)?.title || 'Untitled day') : '');
+    ? ' — ' + entryDisplayTitle(entries.find((e) => e.id === face.entryId)) : '');
 }
 
 async function mobileFlip(dir) {

@@ -100,6 +100,7 @@ const compose = {
 };
 
 let dictation = null;       // handle from initDictation — stopped on compose close
+let photoOnlyHintEl = null; // quiet 'photos can stand alone' line under the story field
 
 function todayISO() {
   const d = new Date();
@@ -109,6 +110,17 @@ function todayISO() {
 
 function setLocationStatus(text) {
   $('compose-location-status').textContent = text;
+}
+
+/**
+ * Photo-only reassurance: when photos exist and the story is empty, a quiet
+ * hint under the story field says no words are required. Purely informative —
+ * never a nag, never a validation state (photo-only entries save fine).
+ */
+function updatePhotoOnlyHint() {
+  if (!photoOnlyHintEl) return;
+  const storyEmpty = $('compose-story').value.trim() === '';
+  photoOnlyHintEl.hidden = !(compose.photos.length > 0 && storyEmpty);
 }
 
 function renderPhotoList() {
@@ -128,6 +140,9 @@ function renderPhotoList() {
     li.append(img, rm);
     list.appendChild(li);
   });
+  // Photo add/remove and compose open all funnel through here — one choke
+  // point keeps the photo-only hint honest without extra wiring.
+  updatePhotoOnlyHint();
 }
 
 function removePhoto(blobId) {
@@ -513,6 +528,16 @@ function initCompose() {
 
   // a hand-picked date is never overwritten by EXIF prefill
   $('compose-date').addEventListener('input', () => { compose.dateAuto = false; });
+
+  // photo-only reassurance line, styled like the other quiet field hints.
+  // Built here (index.html is frozen) and slotted under the story field's
+  // status area; dictation dispatches 'input' too, so it stays in sync.
+  photoOnlyHintEl = document.createElement('p');
+  photoOnlyHintEl.className = 'field-status';
+  photoOnlyHintEl.textContent = 'No words needed — photos can stand alone.';
+  photoOnlyHintEl.hidden = true;
+  $('compose-dictation-status').insertAdjacentElement('afterend', photoOnlyHintEl);
+  $('compose-story').addEventListener('input', updatePhotoOnlyHint);
 
   // dictation (voice.js handles unsupported/permission states in the status line)
   try {
