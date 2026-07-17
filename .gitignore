@@ -7,3 +7,6 @@ dist/
 
 # Local test fixtures (agent-generated JPEGs) — must never land in the deployed site
 testdata/
+
+# local secrets — never commit
+SUPABASE-SECRETS.local.txt

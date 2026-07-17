@@ -12,6 +12,7 @@ import { initJournal } from './journal.js';
 import { initSync } from './sync.js';
 import { initExporter } from './exporter.js';
 import { initShareCard } from './sharecard.js';
+import { initDrive } from './drive.js';
 import { ingestFiles } from './ingest.js';
 import { reverseGeocode, forwardGeocode } from './geocode.js';
 import { initDictation, createVoiceRecorder } from './voice.js';
@@ -619,6 +620,8 @@ async function boot() {
   try { initSync(); } catch (err) { console.error('Wayfarer: sync init failed', err); }
   try { initExporter(); } catch (err) { console.error('Wayfarer: exporter init failed', err); }
   try { initShareCard(); } catch (err) { console.error('Wayfarer: share init failed', err); }
+  // Google Drive import — self-gates on config.GOOGLE_* (stays dormant/offline when unset).
+  try { initDrive('.header-more-menu'); } catch (err) { console.error('Wayfarer: drive init failed', err); }
 
   // shell wiring
   initViewToggle();

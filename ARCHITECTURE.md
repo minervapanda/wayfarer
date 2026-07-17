@@ -12,10 +12,16 @@ Deployed at `https://minervapanda.github.io/wayfarer/` — a **subpath**, so abs
 ## Ground rules (apply to every module)
 
 - **Network**: only (a) OpenStreetMap Nominatim for geocoding (polite: ≤1 req/sec, show
-  attribution, custom `Accept` header only — browsers set User-Agent) and (b) the Supabase
+  attribution, custom `Accept` header only — browsers set User-Agent), (b) the Supabase
   JS client dynamically imported from `https://esm.sh/@supabase/supabase-js@2`, and only
-  when `config.js` is filled in. No other CDNs, fonts, tiles, or frameworks. The app must
-  work **fully offline in local mode**.
+  when `config.js` is filled in, and (c) **Google Drive import (Phase 5, `js/drive.js`)**,
+  and only when `config.GOOGLE_CLIENT_ID` + `GOOGLE_API_KEY` are set — permitting
+  `accounts.google.com/gsi/client` (GIS token client), `apis.google.com/js/api.js` +
+  the Google Picker frame (`docs.google.com`), and `www.googleapis.com` (Drive
+  `files.get?alt=media`). These load **lazily, only on an explicit "Import from Google
+  Drive" click** — never at boot. No other CDNs, fonts, tiles, or frameworks. The app must
+  work **fully offline in local mode**, and with Drive unconfigured it loads **zero** Google
+  code.
 - **No `alert()` / `confirm()` / `prompt()`** — ever. Use `toast()` and `confirmDialog()`
   from `./util.js`, or emit the `'toast'` bus event.
 - **XSS**: user-generated strings must never reach `innerHTML` unescaped. Use
@@ -380,3 +386,36 @@ Sanctioned extensions to the contracts above (integrated and verified):
   `functions/_middleware.js` is a standalone Pages Function (password gate —
   it must never import app modules); `wrangler.toml` + `SETUP-CLOUDFLARE.md`
   cover deploys.
+
+## 8. Addendum — Phase 1A: password auth + device isolation
+
+Sanctioned additive extensions (no frozen contract changed):
+
+- **Entry `owner` field** (additive to the §1 Entry model): `owner: string|null` —
+  the uid that owns the entry, or `null`/absent for an *unclaimed* local entry.
+  Stamped once by `store.saveEntry()` from the active owner and never overwritten;
+  `store.importData()` preserves an incoming `owner` verbatim. This is the device-
+  isolation key — it closes both the push leak and the read leak on shared devices.
+- **New `store.js` exports** (additive; existing signatures unchanged):
+  - `setActiveOwner(uid)` / `getActiveOwner()` — the uid this device is acting for
+    (`null` in local mode). `listEntries()` now returns only entries whose owner
+    equals the active owner (unclaimed entries in local mode, own entries when
+    signed in). `saveEntry()` stamps unstamped entries with the active owner.
+  - `adoptLocalEntries(uid)` → number — claims every unclaimed entry for `uid`
+    (marks each dirty), used by the first-sign-in adopt flow.
+  - `clearLocalData()` — wipes `entries` + `blobs` + `meta`; only the explicit
+    "Sign out & clear this device" action calls it, never a normal sign-out.
+- **`sync.js` owner plumbing**: `startEngine()` calls `setActiveOwner(uid)` before
+  the first sync and `stopEngine()` calls `setActiveOwner(null)` (each emits
+  `entries-changed {reason:'sync'}` so views re-scope). `pushDirty()` skips any
+  entry whose `owner !== userId` (kept dirty, never leaked). `applyRemoteRow()`
+  stamps `owner = userId` on pulled rows. On first cloud sign-in, unclaimed dirty
+  entries trigger a default-No `confirmDialog` adopt prompt.
+- **`auth.js` multi-view gate**: the runtime-injected `#login-gate` is now a state
+  machine — SIGN IN / CREATE ACCOUNT / FORGOT PASSWORD / SET NEW PASSWORD — wiring
+  `signInWithPassword`, `signUp`, `resetPasswordForEmail`, `updateUser` (on the
+  `PASSWORD_RECOVERY` event), with `signInWithOtp` (magic link) and
+  `signInWithOAuth({provider:'google'})` as secondary actions. Password fields are
+  injected before first paint (autocomplete `current-password`/`new-password` per
+  view). A runtime-injected "Sign out & clear this device" button sits beside
+  `#btn-signout`. Local mode (empty config) is unchanged — Supabase never loads.

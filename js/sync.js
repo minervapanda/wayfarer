@@ -27,10 +27,11 @@
 
 import { app, bus } from './state.js';
 import { config } from '../config.js';
-import { debounce } from './util.js';
+import { debounce, confirmDialog } from './util.js';
 import {
   listEntries, getEntry, getBlob, putBlob,
-  getDirty, clearDirty, importData
+  getDirty, clearDirty, importData,
+  setActiveOwner, adoptLocalEntries
 } from './store.js';
 import { getClient } from './auth.js';
 
@@ -47,6 +48,80 @@ let syncing = false;
 let runAgain = false;
 let lastFullSyncAt = 0;
 const uploadedBlobIds = new Set(); // per-session cache; Storage upsert makes re-runs safe
+
+/* =========================================================================
+   MEDIA STORAGE ADAPTER — dispatch on config.MEDIA_BACKEND ('supabase' | 'r2')
+   =========================================================================
+   The seam that makes the Phase 4 R2 cutover a config flip, not a rewrite.
+   Both adapters return the SAME shapes the Supabase Storage client returns, so
+   the sync call sites are unchanged:
+     uploadBlob   → { error }            (error null on success)
+     downloadBlob → { data: Blob|null, error }
+   For 'supabase' the behavior is byte-for-byte what sync.js did before. For 'r2'
+   we ask a Pages Function for a short-TTL presigned URL then PUT/GET it directly.
+   Defensive: if MEDIA_BACKEND is 'r2' but R2_MEDIA_ENDPOINT isn't configured,
+   we silently fall back to the Supabase path so a half-set config never breaks
+   sync. Object key stays `<userId>/<blobId>` in every backend. */
+
+function useR2() {
+  return config.MEDIA_BACKEND === 'r2' && !!config.R2_MEDIA_ENDPOINT;
+}
+
+/** Ask the R2 Pages Function for a presigned URL (op: 'put' | 'get'). Carries the
+    Supabase JWT so the function can verify the caller and scope the URL to <uid>/. */
+async function r2Presign(userId, blobId, op) {
+  const client = getClient();
+  let token = '';
+  try {
+    const { data } = await client.auth.getSession();
+    token = data && data.session ? data.session.access_token : '';
+  } catch (e) { /* no token — the function will reject if it requires one */ }
+  const base = String(config.R2_MEDIA_ENDPOINT).replace(/\/+$/, '');
+  const url = `${base}/${encodeURIComponent(userId)}/${encodeURIComponent(blobId)}?op=${op}`;
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: token ? { Authorization: `Bearer ${token}` } : {}
+  });
+  if (!res.ok) throw new Error(`R2 presign ${op} failed: ${res.status}`);
+  const body = await res.json();
+  if (!body || !body.url) throw new Error('R2 presign response missing url');
+  return body.url;
+}
+
+/** Upload one blob. @returns {Promise<{error: any}>} (error null on success). */
+async function uploadBlob(userId, blobId, blob, contentType) {
+  const type = contentType || (blob && blob.type) || 'application/octet-stream';
+  if (useR2()) {
+    try {
+      const signed = await r2Presign(userId, blobId, 'put');
+      const res = await fetch(signed, { method: 'PUT', headers: { 'Content-Type': type }, body: blob });
+      if (!res.ok) return { error: new Error(`R2 PUT failed: ${res.status}`) };
+      return { error: null };
+    } catch (err) {
+      return { error: err };
+    }
+  }
+  // Supabase backend — EXACT prior behavior.
+  return getClient().storage
+    .from(config.BUCKET)
+    .upload(`${userId}/${blobId}`, blob, { upsert: true, contentType: type });
+}
+
+/** Download one blob. @returns {Promise<{data: Blob|null, error: any}>}. */
+async function downloadBlob(userId, blobId) {
+  if (useR2()) {
+    try {
+      const signed = await r2Presign(userId, blobId, 'get');
+      const res = await fetch(signed, { method: 'GET' });
+      if (!res.ok) return { data: null, error: new Error(`R2 GET failed: ${res.status}`) };
+      return { data: await res.blob(), error: null };
+    } catch (err) {
+      return { data: null, error: err };
+    }
+  }
+  // Supabase backend — EXACT prior behavior.
+  return getClient().storage.from(config.BUCKET).download(`${userId}/${blobId}`);
+}
 
 /* =========================================================================
    STATUS PILL — Local · Syncing… · Synced · Offline (queued) · Error+Retry
@@ -182,6 +257,7 @@ async function applyRemoteRow(row, dirtyBefore) {
   remote.id = row.id;
   remote.deleted = !!(row.deleted || remote.deleted);
   if (!remote.updatedAt) remote.updatedAt = row.updated_at;
+  remote.owner = userId; // pulled rows belong to the signed-in user (device isolation)
 
   const local = await getEntry(row.id);
   if (local) {
@@ -259,9 +335,7 @@ async function downloadMissingBlobs(client) {
   for (const [id, kind] of wanted) {
     if (!engineActive) break;
     if (await getBlob(id)) continue;
-    const { data: blob, error } = await client.storage
-      .from(config.BUCKET)
-      .download(`${userId}/${id}`);
+    const { data: blob, error } = await downloadBlob(userId, id);
     if (error || !blob) {
       console.warn(`Wayfarer sync: blob ${id} not downloadable yet`, error);
       continue; // entry still renders (minus this blob); retried next sync
@@ -297,6 +371,11 @@ async function pushDirty(client) {
     const entry = await getEntry(id);
     if (!entry) { await clearDirty(id); continue; } // stale dirty mark
 
+    // Device isolation (push half): only the active user's own entries go up.
+    // An unclaimed or foreign-owned entry stays dirty and local — it must never
+    // leak into whoever happens to be signed in. (Adoption stamps owner=userId.)
+    if ((entry.owner != null ? entry.owner : null) !== userId) continue;
+
     // Blobs first — the entry row must never reference media that isn't there.
     let blobsOk = true;
     if (!entry.deleted) {
@@ -306,12 +385,10 @@ async function pushDirty(client) {
         if (uploadedBlobIds.has(bid)) continue;
         const rec = await getBlob(bid);
         if (!rec || !rec.blob) continue; // referenced but absent locally — nothing to send
-        const { error } = await client.storage
-          .from(config.BUCKET)
-          .upload(`${userId}/${bid}`, rec.blob, {
-            upsert: true,
-            contentType: rec.mime || rec.blob.type || 'application/octet-stream'
-          });
+        const { error } = await uploadBlob(
+          userId, bid, rec.blob,
+          rec.mime || rec.blob.type || 'application/octet-stream'
+        );
         if (error) {
           console.warn(`Wayfarer sync: blob upload failed for ${bid}`, error);
           blobsOk = false;
@@ -385,8 +462,42 @@ function startEngine(session) {
   userId = uid;
   engineActive = true;
   uploadedBlobIds.clear();
+  // Scope local reads/writes to this user BEFORE the first sync (device
+  // isolation) and announce it so views drop any other user's local entries.
+  setActiveOwner(uid);
+  bus.emit('entries-changed', { reason: 'sync' });
+  bootstrapUser(uid);
+}
+
+/** First-sign-in bootstrap: offer to adopt unclaimed local entries, then sync. */
+async function bootstrapUser(uid) {
+  try {
+    await maybeAdoptLocalEntries(uid);
+  } catch (err) {
+    console.warn('Wayfarer sync: adopt check failed', err);
+  }
+  if (!engineActive || userId !== uid) return; // signed out / switched mid-prompt
   if (navigator.onLine) fullSync();
   else setPill('offline');
+}
+
+/** On first cloud sign-in, if unclaimed dirty entries exist on this device,
+    offer (default No) to move them into this account. Only on Yes do we adopt. */
+async function maybeAdoptLocalEntries(uid) {
+  const dirtyIds = await getDirty();
+  let n = 0;
+  for (const id of dirtyIds) {
+    const e = await getEntry(id);
+    if (e && (e.owner == null)) n++;
+  }
+  if (n === 0) return;
+  const ok = await confirmDialog(
+    `Add the ${n} ${n === 1 ? 'entry' : 'entries'} on this device to this account?`,
+    false
+  );
+  if (!ok || !engineActive || userId !== uid) return;
+  const adopted = await adoptLocalEntries(uid);
+  if (adopted > 0) bus.emit('entries-changed', { reason: 'sync' }); // views refresh
 }
 
 function stopEngine() {
@@ -394,6 +505,10 @@ function stopEngine() {
   userId = null;
   runAgain = false;
   schedulePush.cancel();
+  // Back to local mode: unclaimed entries become visible again, the signed-in
+  // user's entries drop out of view (they stay on disk for next sign-in).
+  setActiveOwner(null);
+  bus.emit('entries-changed', { reason: 'sync' });
   setPill('local');
 }
 

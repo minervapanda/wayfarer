@@ -11,6 +11,20 @@ const STORES = ['entries', 'blobs', 'meta'];
 let db = null;
 let memory = null; // { entries: Map, blobs: Map, meta: Map } when IndexedDB is unavailable
 
+// The uid whose entries this device is currently acting for. null in local mode
+// (unclaimed entries). Set by sync.js on sign-in via setActiveOwner(). Device
+// isolation: writes are stamped with it, reads are scoped to it.
+let activeOwner = null;
+
+/** Set the active owner uid (or null for local mode). */
+export function setActiveOwner(uid) { activeOwner = uid || null; }
+
+/** @returns {string|null} the active owner uid, or null in local mode. */
+export function getActiveOwner() { return activeOwner; }
+
+// Treat missing/undefined owner as null (unclaimed) for comparisons.
+const ownerOf = (e) => (e && e.owner != null ? e.owner : null);
+
 function useMemoryFallback(reason) {
   if (memory) return;
   memory = { entries: new Map(), blobs: new Map(), meta: new Map() };
@@ -79,13 +93,20 @@ async function idbAll(store) {
   return req(db.transaction(store, 'readonly').objectStore(store).getAll());
 }
 
+async function idbClear(store) {
+  if (memory) { memory[store].clear(); return; }
+  await req(db.transaction(store, 'readwrite').objectStore(store).clear());
+}
+
 /* ---------------- entries ---------------- */
 
-/** Non-deleted entries sorted by dateISO, then createdAt (both ascending). */
+/** Non-deleted entries owned by the active owner, sorted by dateISO then createdAt.
+    In local mode (activeOwner null) only unclaimed entries (owner null/undefined)
+    are visible — this is the read half of the device-isolation fix. */
 export async function listEntries() {
   const all = await idbAll('entries');
   return all
-    .filter((e) => !e.deleted)
+    .filter((e) => !e.deleted && ownerOf(e) === activeOwner)
     .sort((a, b) =>
       (a.dateISO || '').localeCompare(b.dateISO || '') ||
       (a.createdAt || '').localeCompare(b.createdAt || ''));
@@ -102,6 +123,9 @@ export async function saveEntry(entry) {
   if (!entry.createdAt) entry.createdAt = now;
   entry.updatedAt = now;
   if (typeof entry.deleted !== 'boolean') entry.deleted = false;
+  // Stamp the active owner on first write only — never overwrite an existing
+  // owner (the push half of the device-isolation fix). May be null in local mode.
+  if (entry.owner == null) entry.owner = activeOwner;
   await idbPut('entries', entry);
   await markDirty(entry.id);
   return entry;
@@ -115,6 +139,30 @@ export async function softDeleteEntry(id) {
   entry.updatedAt = new Date().toISOString();
   await idbPut('entries', entry);
   await markDirty(id);
+}
+
+/** Claim every unclaimed (owner null/undefined) entry for `uid`, marking each
+    dirty so sync pushes it. Used by the first-sign-in adopt flow. Returns the
+    number of entries adopted. */
+export async function adoptLocalEntries(uid) {
+  if (!uid) return 0;
+  const all = await idbAll('entries');
+  let count = 0;
+  for (const e of all) {
+    if (ownerOf(e) !== null) continue;
+    e.owner = uid;
+    await idbPut('entries', e);
+    await markDirty(e.id);
+    count++;
+  }
+  return count;
+}
+
+/** Wipe ALL local data (entries + blobs + meta) on this device. This is the
+    explicit "sign out and clear this device" action — never called by a normal
+    sign-out, which must preserve offline-first local data. */
+export async function clearLocalData() {
+  for (const store of STORES) await idbClear(store);
 }
 
 /* ---------------- blobs ---------------- */
@@ -206,6 +254,9 @@ export async function importData(payload) {
   let entryCount = 0;
   for (const e of payload.entries) {
     if (!e || !e.id) continue;
+    // Put verbatim — an incoming `owner` (e.g. a remote row stamped by sync.js)
+    // is preserved as-is; a plain JSON import stays unclaimed (owner absent)
+    // until the sign-in adopt flow claims it.
     await idbPut('entries', e);
     await markDirty(e.id);
     entryCount++;
