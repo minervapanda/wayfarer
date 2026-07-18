@@ -19,9 +19,10 @@ Deployed at `https://minervapanda.github.io/wayfarer/` — a **subpath**, so abs
   `accounts.google.com/gsi/client` (GIS token client), `apis.google.com/js/api.js` +
   the Google Picker frame (`docs.google.com`), and `www.googleapis.com` (Drive
   `files.get?alt=media`). These load **lazily, only on an explicit "Import from Google
-  Drive" click** — never at boot. No other CDNs, fonts, tiles, or frameworks. The app must
-  work **fully offline in local mode**, and with Drive unconfigured it loads **zero** Google
-  code.
+  Drive" click** — never at boot. No other CDNs, fonts, tiles, or frameworks. With Drive
+  unconfigured it loads **zero** Google code. (Policy change 2026-07-17: the deployed app now
+  **requires sign-in** — the "continue offline" path was removed; see §8. A config-empty dev
+  fork still runs Supabase-free.)
 - **No `alert()` / `confirm()` / `prompt()`** — ever. Use `toast()` and `confirmDialog()`
   from `./util.js`, or emit the `'toast'` bus event.
 - **XSS**: user-generated strings must never reach `innerHTML` unescaped. Use
@@ -403,8 +404,9 @@ Sanctioned additive extensions (no frozen contract changed):
     signed in). `saveEntry()` stamps unstamped entries with the active owner.
   - `adoptLocalEntries(uid)` → number — claims every unclaimed entry for `uid`
     (marks each dirty), used by the first-sign-in adopt flow.
-  - `clearLocalData()` — wipes `entries` + `blobs` + `meta`; only the explicit
-    "Sign out & clear this device" action calls it, never a normal sign-out.
+  - `clearLocalData()` — wipes `entries` + `blobs` + `meta`; called by the
+    "Delete my account and data" flow after the cloud purge (a normal sign-out
+    never wipes local data).
 - **`sync.js` owner plumbing**: `startEngine()` calls `setActiveOwner(uid)` before
   the first sync and `stopEngine()` calls `setActiveOwner(null)` (each emits
   `entries-changed {reason:'sync'}` so views re-scope). `pushDirty()` skips any
@@ -417,5 +419,8 @@ Sanctioned additive extensions (no frozen contract changed):
   `PASSWORD_RECOVERY` event), with `signInWithOtp` (magic link) and
   `signInWithOAuth({provider:'google'})` as secondary actions. Password fields are
   injected before first paint (autocomplete `current-password`/`new-password` per
-  view). A runtime-injected "Sign out & clear this device" button sits beside
-  `#btn-signout`. Local mode (empty config) is unchanged — Supabase never loads.
+  view). **Sign-in is required** (policy change 2026-07-17): the "continue offline"
+  bypass and the "Sign out & clear this device" button were removed. A signed-out
+  user always sees the gate; if supabase-js can't load the gate stays shown (locked)
+  with an error rather than opening a local diary. Config-empty (a dev fork with no
+  backend) still runs Supabase-free.

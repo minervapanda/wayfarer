@@ -608,8 +608,13 @@ async function boot() {
     const auth = await import('./auth.js');
     await auth.initAuth();
   } catch (err) {
-    console.error('Wayfarer: auth init failed, continuing in local mode', err);
-    $('login-gate').hidden = true;
+    console.error('Wayfarer: auth init failed — keeping the sign-in gate up', err);
+    const gate = $('login-gate');
+    if (gate) {
+      gate.hidden = false; // sign-in required: never reveal the app on auth failure
+      const st = $('login-status');
+      if (st) st.textContent = 'Sign-in is temporarily unavailable. Please reload the page.';
+    }
   }
 
   // views

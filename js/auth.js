@@ -1,21 +1,23 @@
-// auth.js — password ("passport") auth (Supabase) with a fully offline local mode.
-// OWNER: Builder 4 (backend). Contract: ARCHITECTURE.md §3 + §7 addendum.
+// auth.js — password ("passport") auth (Supabase). SIGN-IN IS REQUIRED: there
+// is no anonymous / "continue offline" path for the deployed app.
+// OWNER: Builder 4 (backend). Contract: ARCHITECTURE.md §3 + §7/§8 addendum.
 //
-// - config empty  → LOCAL MODE: hide #login-gate, emit 'auth-changed'
-//   { session: null, mode: 'local' }, one-time toast pointing at SETUP.md.
-//   Supabase is never loaded, no network is touched.
+// - config empty  → UNCONFIGURED (dev only): hide #login-gate, emit
+//   'auth-changed' { session: null, mode: 'local' } so a backend-less fork
+//   still runs. The live app always has config filled, so this never triggers.
 // - config filled → dynamic import of supabase-js from esm.sh. The frozen
 //   #login-gate is turned into a small runtime-injected MULTI-VIEW state
-//   machine (index.html stays frozen — same pattern as the 'Continue offline'
-//   button): SIGN IN · CREATE ACCOUNT · FORGOT PASSWORD · SET NEW PASSWORD.
-//   Wires signInWithPassword / signUp / resetPasswordForEmail / updateUser,
-//   keeps signInWithOtp (magic link) + signInWithOAuth(google) as secondary
-//   actions, and handles the PASSWORD_RECOVERY auth event.
+//   machine (index.html stays frozen): SIGN IN · CREATE ACCOUNT ·
+//   FORGOT PASSWORD · SET NEW PASSWORD. Wires signInWithPassword / signUp /
+//   resetPasswordForEmail / updateUser, keeps signInWithOtp (magic link) +
+//   signInWithOAuth(google) as secondary actions, handles PASSWORD_RECOVERY.
 //   On session → hide gate, emit 'auth-changed' { session, mode: 'cloud' },
-//   start initSync(). Sign-out returns to the gate. 'Continue offline' is the
-//   escape hatch.
-// - If the esm.sh import fails (offline / blocked) → local mode with a toast.
-//   The diary must always open.
+//   start initSync(). Sign-out returns to the gate — the app stays locked
+//   behind it until a real session exists.
+// - If supabase-js can't load (offline / CDN blocked) → the gate stays SHOWN
+//   with an error asking to reload. There is no usable offline fallback, so a
+//   brand-new user needs a connection for the first sign-in; a returning
+//   user's session is restored from cache once the client loads.
 
 import { app, bus } from './state.js';
 import { config } from '../config.js';
@@ -25,7 +27,6 @@ import { clearLocalData } from './store.js';
 
 const SUPABASE_MODULE = 'https://esm.sh/@supabase/supabase-js@2';
 const LOCAL_TOAST_KEY = 'wayfarer-local-toast-seen';   // localStorage: one-time hint
-const OFFLINE_CHOICE_KEY = 'wayfarer-offline-choice';  // sessionStorage: gate skipped
 
 let client = null;         // Supabase client, or null in local mode
 let lastEmitKey = null;    // dedupes 'auth-changed' (token refreshes are silent)
@@ -45,9 +46,6 @@ const redirectUrl = () => location.origin + location.pathname;
 
 function lsGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
 function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* noop */ } }
-function ssGet(key) { try { return sessionStorage.getItem(key); } catch (e) { return null; } }
-function ssSet(key, val) { try { sessionStorage.setItem(key, val); } catch (e) { /* noop */ } }
-function ssDel(key) { try { sessionStorage.removeItem(key); } catch (e) { /* noop */ } }
 
 /* ---------------- auth-changed emission ---------------- */
 
@@ -94,45 +92,26 @@ function enterLocalMode(gate, signout, { firstRunHint }) {
   }
 }
 
+// Configured, but the auth client couldn't load (offline / CDN blocked / bad
+// config). Keep the gate SHOWN and the app locked behind it with an error —
+// there is no offline fallback now that sign-in is required.
+function showUnavailable(gate, message) {
+  if (gate) gate.hidden = false;
+  const statusEl = $('login-status');
+  if (statusEl) statusEl.textContent = message;
+  syncSignoutButtons($('btn-signout'), false);
+  emitAuth(null, 'cloud');
+}
+
 /* ---------------- signout + clear-device button visibility ---------------- */
 
-// Keep #btn-signout and the injected 'Sign out & clear this device' button in
+// Keep #btn-signout and the injected 'Delete my account and data' button in
 // lockstep so they only ever appear together.
 function syncSignoutButtons(signout, visible) {
   if (signout) signout.hidden = !visible;
   if (!signout || !signout.parentNode) return;
-  for (const sel of ['.btn-clear-device', '.btn-delete-account']) {
-    const el = signout.parentNode.querySelector(sel);
-    if (el) el.hidden = !visible;
-  }
-}
-
-// Inject a 'Sign out & clear this device' control beside #btn-signout. Normal
-// sign-out never wipes local data — clearing is this explicit separate action.
-function injectClearDevice(signout) {
-  if (!signout || !signout.parentNode) return;
-  if (signout.parentNode.querySelector('.btn-clear-device')) return;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'btn btn-ghost btn-clear-device';
-  btn.style.minHeight = '44px';
-  btn.textContent = 'Sign out & clear this device';
-  btn.hidden = signout.hidden;
-  btn.addEventListener('click', async () => {
-    const ok = await confirmDialog(
-      'Sign out and erase this device’s local copy of your diary? Anything already synced stays safe in your account.',
-      true
-    );
-    if (!ok) return;
-    try {
-      await clearLocalData();
-      bus.emit('entries-changed', { reason: 'sync' }); // views refresh to empty
-    } catch (err) {
-      console.warn('Wayfarer: clear local data failed', err);
-    }
-    await signOut();
-  });
-  signout.parentNode.insertBefore(btn, signout.nextSibling);
+  const el = signout.parentNode.querySelector('.btn-delete-account');
+  if (el) el.hidden = !visible;
 }
 
 // Inject a 'Delete my account and data' control beside #btn-signout. Danger
@@ -194,7 +173,6 @@ function showRecovery(gate, signout) {
 
 function applySession(gate, signout, session) {
   if (session) {
-    ssDel(OFFLINE_CHOICE_KEY); // signing in supersedes an earlier "offline" choice
     if (gate) gate.hidden = true;
     syncSignoutButtons(signout, true);
     emitAuth(session, 'cloud');
@@ -204,13 +182,8 @@ function applySession(gate, signout, session) {
 
   syncSignoutButtons(signout, false);
 
-  if (ssGet(OFFLINE_CHOICE_KEY)) {
-    // User chose "Continue offline" this session — behave exactly like local mode.
-    if (gate) gate.hidden = true;
-    emitAuth(null, 'local');
-    return;
-  }
-
+  // Signed out with a backend configured → show the gate and keep the app
+  // locked behind it. There is no "continue offline" bypass; sign-in is required.
   if (gate) {
     const wasHidden = gate.hidden;
     gate.hidden = false;
@@ -469,32 +442,6 @@ function wireGate(gate) {
     });
   }
 
-  // --- 'Continue offline' escape hatch (unchanged) ---
-  if (!gate.querySelector('.gate-offline')) {
-    const wrap = document.createElement('div');
-    wrap.className = 'gate-offline';
-    wrap.style.cssText =
-      'margin-top:18px;padding-top:14px;border-top:1px solid var(--line);' +
-      'display:flex;flex-direction:column;gap:6px;align-items:center;text-align:center;';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-ghost';
-    btn.style.minHeight = '44px';
-    btn.textContent = 'Continue offline';
-    const note = document.createElement('p');
-    note.className = 'gate-status';
-    note.style.margin = '0';
-    note.textContent = 'No account needed — your diary stays on this device until you sign in.';
-    btn.addEventListener('click', () => {
-      ssSet(OFFLINE_CHOICE_KEY, '1');
-      gate.hidden = true;
-      emitAuth(null, 'local');
-      toast('Running locally — sign in any time to turn on cloud sync.', 'info');
-    });
-    wrap.append(btn, note);
-    card.appendChild(wrap);
-  }
-
   injectGateLegal(card);
 
   setView('signin'); // default view; ensures the password field exists pre-paint
@@ -542,9 +489,8 @@ export async function initAuth() {
   try {
     ({ createClient } = await import(SUPABASE_MODULE));
   } catch (err) {
-    console.warn('Wayfarer: could not load Supabase client (offline?) — falling back to local mode.', err);
-    enterLocalMode(gate, signout, { firstRunHint: false });
-    toast('Couldn’t reach the sync service — running locally. Your diary is safe on this device.', 'warning');
+    console.warn('Wayfarer: could not load Supabase client (offline / CDN blocked).', err);
+    showUnavailable(gate, 'Couldn’t reach the sign-in service. Check your connection and reload the page.');
     return;
   }
 
@@ -559,13 +505,11 @@ export async function initAuth() {
   } catch (err) {
     console.error('Wayfarer: Supabase client creation failed — check config.js.', err);
     client = null;
-    enterLocalMode(gate, signout, { firstRunHint: false });
-    toast('Sync configuration looks wrong (see SETUP.md) — running locally.', 'warning');
+    showUnavailable(gate, 'Sign-in is temporarily unavailable (configuration error). Please try again later.');
     return;
   }
 
   wireGate(gate);
-  injectClearDevice(signout);
   injectDeleteAccount(signout);
 
   // Recovery links land on this same redirect URL. Detect early so the session
