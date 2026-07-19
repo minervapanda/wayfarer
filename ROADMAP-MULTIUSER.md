@@ -373,6 +373,45 @@ _Feature requests, distinct from the infra follow-ups above. Not yet scoped/esti
      per-theme palettes; maybe a 4:5 portrait for feed posts) selectable in the share modal
      (`js/sharecard.js`). Keep the seeded-deterministic, offline, no-deps contract.
 
+## Production roll-out readiness (assessed 2026-07-19)
+
+**Question asked:** ready to launch on an indie marketplace with a $1–5/mo subscription?
+**Verdict: ready to *show*, not yet ready to *charge*. Estimated gap: ~1–2 focused weeks.**
+
+What's launch-grade already: the core product loop (book + journal + share cards, offline-first,
+E2E-verified multi-user cloud with email+password and Google login, per-user isolation, quotas,
+delete-account), the distinctive scrapbook design (the marketable asset), responsive/reduced-motion/
+dark-mode CSS, demo trip, JSON export, ToS/Privacy drafts.
+
+### Blockers before taking money (in order)
+
+1. **Payments don't exist.** Checkout (Stripe vs. Lemon Squeezy — LS is merchant of record and
+   handles tax/VAT, much less work for a static site) + webhook Edge Function writing a `plan`
+   column on `profiles` + quota/feature gating by plan. The only real *build* item; the rest is setup.
+2. **Password reset is effectively broken for strangers.** The forgot-password UI is wired
+   (`js/auth.js` → `resetPasswordForEmail`) but sends via Supabase's built-in mailer (~2/hr,
+   team-only). Fix = the custom-SMTP follow-up above: buy a domain (~$12/yr) → Resend + SPF/DKIM →
+   paste SMTP creds → re-enable confirm-email. The domain also fixes selling from a `github.io`
+   URL (hobby-project signal) and unlocks a real abuse@ contact.
+3. **Free-tier math doesn't survive paying users.** 1GB storage ≈ 10–20 users; free projects pause
+   after ~7 idle days. Decide with the paid launch, not after: Supabase Pro ($25/mo = first ~8–25
+   subscribers just to break even) or the R2 cutover (Phase 4). A paused DB with paying customers
+   is the worst outcome.
+4. **Open signups with no Turnstile and no spend cap** — launch traffic + free tier = abuse eats
+   the quota (Phase 2/3 item, becomes mandatory pre-revenue).
+5. **Placeholders**: `abuse@wayfarer.example` in TERMS/PRIVACY; Google consent screen still shows
+   Supabase-default Privacy/Terms links.
+
+### Recommended path: free launch first, charge second
+
+Launch free now (Product Hunt / indie communities — the product holds up) to validate demand and
+collect signups. Then, in order: domain → Resend SMTP + confirm-email + working reset → Turnstile +
+spend cap → payments + plan gating → flip the paid tier on.
+
+**Freemium split that matches what's built:** free = 1 trip / 100MB; ~$2/mo or $15/yr = more
+storage, premium share templates, and later Google Photos/Drive import — i.e. the "capture &
+sharing" section above is the paid tier's feature list.
+
 **Operational note for any future Google Cloud work:** the console in the owner's Chrome
 defaults to a *different* Google account (Yash Gupta / guptayash0270@gmail.com). Switch to
 **minervapandaniki@gmail.com** via the account picker (no password needed) before touching
