@@ -321,10 +321,16 @@ couldn't be done autonomously (a CLI deploy, a third-party signup, or a judgment
    an uploaded object was deleted — the function returned `objectsRemoved:1`, the storage
    folder emptied, and re-sign-in failed. `--no-verify-jwt` is intentional (the function
    verifies the caller's token internally; keeps the browser CORS preflight unblocked).
-2. **Custom SMTP + re-enable email confirmation — before promoting widely.** The built-in
-   mailer only delivers to the project's own team address, so confirm-email is currently
-   OFF. Wire Resend (free tier, native Supabase integration) under Auth → Emails, then turn
-   Confirm-email back ON and test with a non-team address.
+2. **Custom SMTP + re-enable email confirmation — before promoting widely.**
+   *(Deferred 2026-07-18 — decision: keep confirm-email OFF for now.)* The built-in mailer
+   only delivers to the project's own team address. **Prerequisite the original plan missed:
+   a verified sending domain.** Resend's free `onboarding@resend.dev` sender can only reach
+   *your own* inbox; to email arbitrary signups you must verify a domain by adding SPF/DKIM
+   DNS records — and `github.io` gives you no domain you can verify. So this needs: (a) a
+   domain you own or buy (~$10–12/yr), (b) your own Resend account (created by you), (c) the
+   DNS records added at the registrar. Once the domain is verified: paste Resend's SMTP
+   creds into Supabase Auth → SMTP, flip Confirm-email ON, and test with an outside address.
+   Until then signups work without email verification (acceptable pre-launch).
 3. **Point the Google consent screen's Privacy/Terms at your own docs.** They currently show
    Supabase defaults; set them to `./PRIVACY.md` / `./TERMS.md` (or hosted copies) in the
    Google Auth Platform → Branding screen, and disclose Google/Drive usage per Google's
