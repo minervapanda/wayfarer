@@ -153,3 +153,29 @@ E2E (Chrome, localhost gate): photo-only save (no title/story/location) PASS ·
 auto → Scrapbook collage PASS · chip cycle through all 5 templates PASS ·
 lightbox from collage PASS (caption fixed) · template choice persists across
 reload PASS ("wall") · TOC/book-face fallback titles PASS · no console errors.
+
+## 2026-07-19 — Blank share-card photo fixed (root-caused live, deployed 920f82c)
+
+User report: the story card for the Jul 19 Sunnyvale entry rendered its 4th
+polaroid as an empty white frame. Live debugging against the deployed app
+showed all 7 stored photo blobs decode fine today — the blank was a transient
+corrupt/truncated blob at generation time, enabled by two real bugs:
+
+- sync.js downloadMissingBlobs(): a photo blob that failed createImageBitmap
+  was stored anyway ("dimensions stay 0 — cosmetic only"), and the existing
+  record made every later sync skip re-downloading it → a truncated download
+  would be cached FOREVER as a blank photo. Now: skip putBlob on decode
+  failure so the next sync retries.
+- storycard.js decodeBlob(): on createImageBitmap rejection it fell back to
+  <img> decode — but Chrome "loads" a truncated JPEG as an <img> with full
+  header dimensions and no pixels (verified live: 10%-truncated JPEG →
+  naturalWidth 1200x1600, blank raster; img.decode() also resolves). That
+  zombie image passed loadPhotos' width guard and painted an empty frame.
+  Now: for raster types createImageBitmap reliably supports (jpeg/png/webp/
+  gif/avif/bmp) a rejection returns null so loadPhotos backfills the next
+  photo; the <img> fallback remains for HEIC/SVG/no-createImageBitmap.
+
+Verified live post-deploy: fixed storycard.js served by Pages; truncated-blob
+simulation returns null (skipped), full blob decodes. Roadmap gained a
+"capture & sharing" product section (Google Photos import caveats, quality
+ceiling revisit, more share templates).
