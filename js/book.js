@@ -14,6 +14,7 @@ import { listEntries, getBlob, softDeleteEntry } from './store.js';
 import { fmtDate, blobUrl, toast, confirmDialog, entryDisplayTitle } from './util.js';
 import { renderVoicePlayer } from './voice.js';
 import { loadDemo } from './demo.js';
+import { buildLightbox } from './lightbox.js';
 
 const FLIP_MS = 620;         // one deliberate page turn
 const FLIP_MS_QUICK = 190;   // staggered TOC jumps
@@ -31,6 +32,7 @@ let isMobileLayout = false;
 let animating = false;
 let dirtyWhileHidden = false;
 let renderToken = 0;
+let lightbox = null;         // shared photo viewer (built once in initBook)
 let bookEl = null, liveEl = null, navPrevEl = null, navNextEl = null;
 let hotLeftEl = null, hotRightEl = null, indicatorEl = null;
 let mPageEl = null, mSceneEl = null, mWrapEl = null;
@@ -157,6 +159,9 @@ function buildEntryFace(entry) {
     const shown = n <= 4 ? entry.photoIds : entry.photoIds.slice(0, 5);
     // Frames default to square until hydrateFaces() reads the blob {w,h}.
     collage.dataset.mix = 's'.repeat(shown.length);
+    // Tapping any photo (or the "+N more" tile) opens the shared lightbox on the
+    // FULL set of the entry's photos — the book has no other way to enlarge them.
+    const openAt = (startIdx) => { if (lightbox) lightbox.open(entry.photoIds, startIdx, displayTitle); };
     shown.forEach((pid, i) => {
       const fig = el('figure', 'bk-snap');
       fig.dataset.orient = 'square';
@@ -171,9 +176,24 @@ function buildEntryFace(entry) {
       img.dataset.photoId = pid;
       img.draggable = false;
       fig.appendChild(img);
+      fig.setAttribute('role', 'button');
+      fig.tabIndex = 0;
+      fig.setAttribute('aria-label', `View photo ${i + 1} of ${n} — ${displayTitle}`);
+      fig.style.cursor = 'zoom-in';
+      fig.addEventListener('click', (ev) => { ev.stopPropagation(); openAt(i); });
+      fig.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openAt(i); }
+      });
       collage.appendChild(fig);
     });
-    if (n > 5) collage.appendChild(el('span', 'bk-more-count', `+${n - 5} more`));
+    if (n > 5) {
+      const more = el('button', 'bk-more-count', `+${n - 5} more`);
+      more.type = 'button';
+      more.style.cssText = 'background:none;padding:0;cursor:pointer;appearance:none;-webkit-appearance:none;';
+      more.setAttribute('aria-label', `View all ${n} photos — ${displayTitle}`);
+      more.addEventListener('click', (ev) => { ev.stopPropagation(); openAt(5); });
+      collage.appendChild(more);
+    }
     art.appendChild(collage);
   } else {
     art.appendChild(el('div', 'bk-stamp', 'a story'));
@@ -792,6 +812,10 @@ function onKeydown(ev) {
 
 export function initBook(rootEl) {
   root = rootEl;
+  if (!lightbox) {
+    lightbox = buildLightbox();
+    document.body.appendChild(lightbox.el); // fixed overlay, above the book
+  }
   render();
 
   bus.on('entries-changed', () => {

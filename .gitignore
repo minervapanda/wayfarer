@@ -10,3 +10,6 @@ testdata/
 
 # local secrets — never commit
 SUPABASE-SECRETS.local.txt
+
+# supabase CLI scratch
+supabase/.temp/
