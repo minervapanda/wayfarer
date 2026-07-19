@@ -788,11 +788,25 @@ async function loadPhotos(e, max) {
   return out;
 }
 
+// Raster types createImageBitmap decodes reliably in every engine we target.
+// For these, a createImageBitmap rejection means the bytes are corrupt or
+// half-written — NOT a missing-codec gap — so we must NOT resurrect them via
+// <img>: a truncated JPEG still "loads" as an <img> reporting its header
+// dimensions but with no pixels, which paints a blank white photo slot. The
+// <img> fallback stays only for formats createImageBitmap can miss (HEIC/HEIF,
+// SVG) or when the API is absent entirely.
+const CIB_RASTER = /^image\/(jpeg|jpg|png|webp|gif|avif|bmp)$/i;
+
 async function decodeBlob(id, blob) {
   if (typeof createImageBitmap === 'function') {
     try {
       return await createImageBitmap(blob);
-    } catch (err) { /* fall through to <img> decode */ }
+    } catch (err) {
+      // Corrupt/truncated well-supported image → skip it (return null) so
+      // loadPhotos backfills a later photo instead of drawing an empty frame.
+      // Only unusual formats fall through to the <img> decode below.
+      if (CIB_RASTER.test((blob && blob.type) || '')) return null;
+    }
   }
   try {
     // Reuse the app-wide cached object URL (util.blobUrl) — do NOT revoke it,

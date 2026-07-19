@@ -346,6 +346,33 @@ couldn't be done autonomously (a CLI deploy, a third-party signup, or a judgment
 7. **Leaked-password protection (HIBP)** is Pro-plan only — enable it if/when you move to
    Supabase Pro.
 
+## Product roadmap — capture & sharing (added 2026-07-19)
+
+_Feature requests, distinct from the infra follow-ups above. Not yet scoped/estimated._
+
+1. **Import photos straight from a Google Photos link.** Let a user paste a shared Google
+   Photos album/photo URL and have Wayfarer pull the images into an entry automatically,
+   instead of manual file picking. **Caveat to scope first:** Google Photos shared *links*
+   are not a public image API — a `photos.app.goo.gl` share URL renders an HTML gallery of
+   short-lived, watermarked-size CDN URLs, and scraping it is brittle and against ToS. The
+   supported path is the **Google Photos Picker API** (user picks items in Google's own UI,
+   we get temporary `baseUrl`s to download originals) or the Library API — both need a
+   Google Cloud OAuth client with the `photoslibrary.readonly` / picker scopes (a *sensitive*
+   scope → Google verification + possibly CASA, heavier than the Drive `drive.file` path in
+   Phase 5). Decide picker-vs-link before building; a raw "paste a link" flow likely can't be
+   done reliably or compliantly. Shares infrastructure with Phase 5 (Drive import).
+2. **Higher image quality + more shareable templates.** Two parts:
+   - *Quality:* ingest currently downscales to 1600 px long-edge at a fixed JPEG quality
+     (`js/ingest.js` `MAX_EDGE`/`JPEG_QUALITY`), and the story card renders those. Revisit
+     the ceiling (e.g. 2048–2560 px, quality ~0.9, or keep a higher-res "original" tier for
+     sharing) — weigh against the 250 MB/user quota and the 1 GB free-tier storage cap, so a
+     quality bump and the R2 cutover trigger (Phase 4) move together. Also consider rendering
+     the share card from the highest-res blob available rather than the display copy.
+   - *Templates:* `js/storycard.js` ships two formats (`story` 9:16, `square` 1:1) with one
+     scrapbook design. Add more share layouts/themes (e.g. postcard, filmstrip, minimalist,
+     per-theme palettes; maybe a 4:5 portrait for feed posts) selectable in the share modal
+     (`js/sharecard.js`). Keep the seeded-deterministic, offline, no-deps contract.
+
 **Operational note for any future Google Cloud work:** the console in the owner's Chrome
 defaults to a *different* Google account (Yash Gupta / guptayash0270@gmail.com). Switch to
 **minervapandaniki@gmail.com** via the account picker (no password needed) before touching

@@ -346,7 +346,16 @@ async function downloadMissingBlobs(client) {
         const bmp = await createImageBitmap(blob);
         w = bmp.width; h = bmp.height;
         bmp.close();
-      } catch (e) { /* dimensions stay 0 — cosmetic only */ }
+      } catch (e) {
+        // A photo blob that won't decode arrived corrupt or truncated (a short
+        // download that resolved without a network error). Do NOT persist it:
+        // a stored record makes `if (await getBlob(id)) continue` skip this id
+        // on every future sync, so the bad blob would be cached forever and
+        // paint a blank photo in the book/share card. Leaving it unstored lets
+        // the next sync retry the download.
+        console.warn(`Wayfarer sync: blob ${id} downloaded but won't decode; will retry next sync`, e);
+        continue;
+      }
     }
     await putBlob({
       id, blob, kind, w, h,
