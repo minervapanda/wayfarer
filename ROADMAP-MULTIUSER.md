@@ -23,6 +23,34 @@ The real remaining work is four things, in this order:
 Ship auth first, Drive last. Stay behind an invite wall until the isolation + privacy +
 observability pieces are verified, then flip to open sign-ups.
 
+## Build log — what actually shipped (activated 2026-07-17, updated 2026-07-18)
+
+The plan below was executed. Current state of the deployed app:
+
+- **Live** at `https://minervapanda.github.io/wayfarer/` (GitHub Pages), backed by Supabase
+  project `ylqufwdiozpmezjubobb`. Runs in cloud mode.
+- **Code shipped & deployed**: password 4-view auth gate, device-isolation owner model
+  (Phase 1A); `profiles` + 250 MB quota + idempotent storage accounting, the R2 media-adapter
+  seam (dormant), `PRIVACY.md`/`TERMS.md` (Phase 1B); `js/drive.js` Google Drive import
+  (dormant until `config.GOOGLE_*` is set, Phase 5). The `delete-account` Edge Function is
+  written but **not deployed yet** (see Open follow-ups).
+- **Supabase configured**: schema run (3 tables, private `wayfarer-media` bucket verified
+  `public=false`, 10 RLS policies, 4 triggers); email signups on; Site + redirect URLs set.
+- **Google login is LIVE** (OAuth consent "Wayfarer", External/Production, non-sensitive
+  scopes; Web client → the Supabase callback; provider enabled in Supabase).
+- **E2E-verified against the live backend**: password signup + login, adopt flow, photo
+  sync to Storage, exact quota accounting, two-user isolation, live production login, and
+  the Google OAuth flow reaching Google's consent screen.
+- **Policy change 2026-07-17 (commit f953ba4)**: **sign-in is now REQUIRED.** The
+  "continue offline" bypass and the "Sign out & clear this device" button were removed, and
+  the auth-unavailable failure paths keep the gate locked rather than opening a local diary.
+  This intentionally reverses the offline-first *entry* stance in the plan below: a brand-new
+  user now needs a connection for their first sign-in (returning users still work offline
+  from cache), and there is no in-app button to wipe a shared device's local cache (per-user
+  read-scoping still hides one user's cached entries from the next).
+- **Known tradeoff currently in effect**: **confirm-email is OFF** so public signups work
+  without custom SMTP — re-enabling it is gated on the SMTP follow-up below.
+
 ## What's already done vs. what's new
 
 | Already built & correct | Net-new work |
@@ -281,7 +309,43 @@ uid, sync pushes them up. No bulk migration tooling needed.
 
 ---
 
+## Open follow-ups (as of 2026-07-18)
+
+Concrete items still outstanding, roughly in priority order. Each needs owner action that
+couldn't be done autonomously (a CLI deploy, a third-party signup, or a judgment call).
+
+1. **Deploy the account-delete function.** Run `supabase functions deploy delete-account`
+   and set the `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` secrets. Until then the
+   "Delete my account and data" button errors. (Owner's first Deno Edge Function deploy;
+   needs `supabase login`.)
+2. **Custom SMTP + re-enable email confirmation — before promoting widely.** The built-in
+   mailer only delivers to the project's own team address, so confirm-email is currently
+   OFF. Wire Resend (free tier, native Supabase integration) under Auth → Emails, then turn
+   Confirm-email back ON and test with a non-team address.
+3. **Point the Google consent screen's Privacy/Terms at your own docs.** They currently show
+   Supabase defaults; set them to `./PRIVACY.md` / `./TERMS.md` (or hosted copies) in the
+   Google Auth Platform → Branding screen, and disclose Google/Drive usage per Google's
+   Limited Use terms.
+4. **Replace the `abuse@wayfarer.example` placeholder** in `TERMS.md`/`PRIVACY.md` with a
+   real monitored contact before public launch.
+5. **Anti-abuse for open signups (Phase 2/3):** enable Cloudflare Turnstile on the auth
+   endpoints (needs loading `challenges.cloudflare.com` + a CSP/allowlist entry), and turn on
+   Supabase billing alerts + spend cap before removing any invite wall.
+6. **R2 media cutover (Phase 4), triggered not scheduled:** build `functions/media/[[path]].js`
+   (JWT-verified presign) and flip `config.MEDIA_BACKEND='r2'` once storage ≈800 MB, egress
+   ≈4 GB/mo, or ≈15 active users.
+7. **Leaked-password protection (HIBP)** is Pro-plan only — enable it if/when you move to
+   Supabase Pro.
+
+**Operational note for any future Google Cloud work:** the console in the owner's Chrome
+defaults to a *different* Google account (Yash Gupta / guptayash0270@gmail.com). Switch to
+**minervapandaniki@gmail.com** via the account picker (no password needed) before touching
+Google Cloud, or resources land in the wrong account.
+
+---
+
 _Method note: this plan was produced by a multi-agent design pass — four parallel design
 briefs (auth, infra, Drive import, security+migration), an adversarial fact-check of 14
 external claims against July 2026 sources, a synthesis, and a skeptic review whose ten
-corrections are folded in above._
+corrections are folded in above. Build log + follow-ups appended 2026-07-18 after the
+activation and sign-in-required change._
