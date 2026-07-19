@@ -33,7 +33,7 @@ The plan below was executed. Current state of the deployed app:
   (Phase 1A); `profiles` + 250 MB quota + idempotent storage accounting, the R2 media-adapter
   seam (dormant), `PRIVACY.md`/`TERMS.md` (Phase 1B); `js/drive.js` Google Drive import
   (dormant until `config.GOOGLE_*` is set, Phase 5). The `delete-account` Edge Function is
-  written but **not deployed yet** (see Open follow-ups).
+  **deployed and E2E-verified** (2026-07-18).
 - **Supabase configured**: schema run (3 tables, private `wayfarer-media` bucket verified
   `public=false`, 10 RLS policies, 4 triggers); email signups on; Site + redirect URLs set.
 - **Google login is LIVE** (OAuth consent "Wayfarer", External/Production, non-sensitive
@@ -314,10 +314,13 @@ uid, sync pushes them up. No bulk migration tooling needed.
 Concrete items still outstanding, roughly in priority order. Each needs owner action that
 couldn't be done autonomously (a CLI deploy, a third-party signup, or a judgment call).
 
-1. **Deploy the account-delete function.** Run `supabase functions deploy delete-account`
-   and set the `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` secrets. Until then the
-   "Delete my account and data" button errors. (Owner's first Deno Edge Function deploy;
-   needs `supabase login`.)
+1. ~~Deploy the account-delete function.~~ **DONE 2026-07-18** — deployed with
+   `supabase functions deploy delete-account --no-verify-jwt` (authenticated via a
+   Personal Access Token, no interactive login needed; the service-role key is
+   auto-injected at runtime, so no secret was set). E2E-verified: a throwaway account with
+   an uploaded object was deleted — the function returned `objectsRemoved:1`, the storage
+   folder emptied, and re-sign-in failed. `--no-verify-jwt` is intentional (the function
+   verifies the caller's token internally; keeps the browser CORS preflight unblocked).
 2. **Custom SMTP + re-enable email confirmation — before promoting widely.** The built-in
    mailer only delivers to the project's own team address, so confirm-email is currently
    OFF. Wire Resend (free tier, native Supabase integration) under Auth → Emails, then turn
