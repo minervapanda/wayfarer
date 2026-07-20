@@ -388,11 +388,20 @@ dark-mode CSS, demo trip, JSON export, ToS/Privacy drafts.
 1. **Payments don't exist.** Checkout (Stripe vs. Lemon Squeezy — LS is merchant of record and
    handles tax/VAT, much less work for a static site) + webhook Edge Function writing a `plan`
    column on `profiles` + quota/feature gating by plan. The only real *build* item; the rest is setup.
-2. **Password reset is effectively broken for strangers.** The forgot-password UI is wired
-   (`js/auth.js` → `resetPasswordForEmail`) but sends via Supabase's built-in mailer (~2/hr,
-   team-only). Fix = the custom-SMTP follow-up above: buy a domain (~$12/yr) → Resend + SPF/DKIM →
-   paste SMTP creds → re-enable confirm-email. The domain also fixes selling from a `github.io`
-   URL (hobby-project signal) and unlocks a real abuse@ contact.
+2. **~~Password reset is effectively broken for strangers~~ — RESOLVED by Google-only auth
+   (2026-07-19).** The gate now shows only "Continue with Google" (`GOOGLE_ONLY` flag in
+   `js/auth.js`); no passwords exist, so no reset/confirm/magic-link emails are ever needed —
+   the custom-SMTP item drops out of the pre-revenue path entirely (it returns only if email
+   auth returns, or for product email like receipts). **Remaining enforcement step (owner,
+   dashboard):** the UI is hidden but the signup API stays open until the Email provider is
+   disabled in Supabase → Authentication → Sign In / Providers. Before flipping it, check
+   Authentication → Users: any account whose only identity is `email` (including test
+   accounts — and confirm the owner's own diary account shows a `google` identity) loses
+   sign-in when Email is disabled; with confirm-email OFF those accounts' addresses are
+   unverified, so a later Google sign-in with the same address may create a NEW empty
+   account instead of linking. Migrate anything that matters (sign in with Google once,
+   re-import the diary JSON) before disabling. A domain is still worth buying for trust +
+   a real abuse@ contact, but it no longer blocks charging.
 3. **Free-tier math doesn't survive paying users.** 1GB storage ≈ 10–20 users; free projects pause
    after ~7 idle days. Decide with the paid launch, not after: Supabase Pro ($25/mo = first ~8–25
    subscribers just to break even) or the R2 cutover (Phase 4). A paused DB with paying customers

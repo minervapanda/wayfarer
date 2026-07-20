@@ -11,6 +11,12 @@
 //   FORGOT PASSWORD · SET NEW PASSWORD. Wires signInWithPassword / signUp /
 //   resetPasswordForEmail / updateUser, keeps signInWithOtp (magic link) +
 //   signInWithOAuth(google) as secondary actions, handles PASSWORD_RECOVERY.
+//   GOOGLE_ONLY (2026-07-19, owner decision): the gate shows ONLY the Google
+//   button — no email/password, no sign-up, no reset — so users never hold a
+//   password for Wayfarer. The email machinery below is kept intact but
+//   unreachable; flip GOOGLE_ONLY to false to restore it. NOTE: this hides
+//   the UI only — signups via the raw API stay open until the Email provider
+//   is also disabled in the Supabase dashboard (Auth → Sign In / Providers).
 //   On session → hide gate, emit 'auth-changed' { session, mode: 'cloud' },
 //   start initSync(). Sign-out returns to the gate — the app stays locked
 //   behind it until a real session exists.
@@ -27,6 +33,7 @@ import { clearLocalData } from './store.js';
 
 const SUPABASE_MODULE = 'https://esm.sh/@supabase/supabase-js@2';
 const LOCAL_TOAST_KEY = 'wayfarer-local-toast-seen';   // localStorage: one-time hint
+const GOOGLE_ONLY = true; // gate shows only "Continue with Google" (see header)
 
 let client = null;         // Supabase client, or null in local mode
 let lastEmitKey = null;    // dedupes 'auth-changed' (token refreshes are silent)
@@ -75,7 +82,7 @@ function friendlyAuthError(err) {
     return err.message; // server's own length hint is the clearest thing to show
   }
   if (m.includes('provider is not enabled') || m.includes('not enabled')) {
-    return 'That sign-in method isn’t available yet. Use email and password instead.';
+    return 'That sign-in method isn’t available right now. Please try again later.';
   }
   return (err && err.message) ? err.message : 'Something went wrong. Please try again.';
 }
@@ -282,6 +289,7 @@ function wireGate(gate) {
   const oauthTop = document.createElement('div');
   oauthTop.className = 'gate-oauth-top';
   if (form && form.parentNode) form.parentNode.insertBefore(oauthTop, form);
+  if (GOOGLE_ONLY && form) form.hidden = true; // email machinery stays wired but unreachable
 
   // --- actions row (view switches + secondary sign-in methods) ---
   const actions = document.createElement('div');
@@ -344,6 +352,7 @@ function wireGate(gate) {
 
   function renderOauthTop(view) {
     oauthTop.textContent = '';
+    if (GOOGLE_ONLY) { oauthTop.append(googleBtn()); return; } // the only way in
     if (view !== 'signin' && view !== 'signup') return; // forgot/recovery: no OAuth equivalent
     const divider = document.createElement('p');
     divider.className = 'gate-divider';
@@ -353,6 +362,7 @@ function wireGate(gate) {
 
   function renderActions(view) {
     actions.textContent = '';
+    if (GOOGLE_ONLY) return; // no email views to switch to
     if (view === 'signin') {
       actions.append(
         linkBtn('New here? Create an account', () => setView('signup')),
@@ -372,9 +382,12 @@ function wireGate(gate) {
 
   // --- the view switcher ---
   setView = function (view) {
+    if (GOOGLE_ONLY) view = 'signin'; // single-view gate; recovery/forgot don't exist
     const cfg = VIEWS[view] || VIEWS.signin;
     currentView = view;
-    if (lede) lede.textContent = cfg.lede;
+    if (lede) lede.textContent = GOOGLE_ONLY
+      ? 'Sign in with Google to open your diary — no password to remember.'
+      : cfg.lede;
     if (email) email.hidden = !cfg.email;
     pwField.wrap.hidden = !cfg.pw;
     pw2Field.wrap.hidden = !cfg.pw2;
