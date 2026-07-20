@@ -208,7 +208,11 @@ function injectGateStyle() {
     '.gate-actions{display:flex;flex-direction:column;gap:4px;align-items:center;margin-top:12px;}' +
     '.gate-link{min-height:44px;background:none;border:none;color:var(--accent);' +
     'text-decoration:underline;padding:8px;font-size:14px;cursor:pointer;}' +
-    '.gate-oauth{min-height:44px;width:100%;border:1px solid var(--line);margin-top:6px;}';
+    '.gate-oauth{min-height:44px;width:100%;border:1px solid var(--line);}' +
+    '.gate-oauth-top{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}' +
+    '.gate-divider{display:flex;align-items:center;gap:10px;margin:2px 0;' +
+    'font-size:12px;color:var(--ink-soft);}' +
+    '.gate-divider::before,.gate-divider::after{content:"";flex:1;height:1px;background:var(--line);}';
   document.head.appendChild(st);
 }
 
@@ -271,6 +275,14 @@ function wireGate(gate) {
     form.insertBefore(pw2Field.wrap, send);
   }
 
+  // --- OAuth-first slot: Google sign-in sits above the email/password form,
+  //     since it's the fastest path for most users. A divider marks the
+  //     email form as the fallback. Populated per-view in setView() below —
+  //     forgot/recovery have no OAuth equivalent, so it stays empty there.
+  const oauthTop = document.createElement('div');
+  oauthTop.className = 'gate-oauth-top';
+  if (form && form.parentNode) form.parentNode.insertBefore(oauthTop, form);
+
   // --- actions row (view switches + secondary sign-in methods) ---
   const actions = document.createElement('div');
   actions.className = 'gate-actions';
@@ -330,19 +342,26 @@ function wireGate(gate) {
     return b;
   }
 
+  function renderOauthTop(view) {
+    oauthTop.textContent = '';
+    if (view !== 'signin' && view !== 'signup') return; // forgot/recovery: no OAuth equivalent
+    const divider = document.createElement('p');
+    divider.className = 'gate-divider';
+    divider.textContent = 'or use your email';
+    oauthTop.append(googleBtn(), divider);
+  }
+
   function renderActions(view) {
     actions.textContent = '';
     if (view === 'signin') {
       actions.append(
         linkBtn('New here? Create an account', () => setView('signup')),
         linkBtn('Forgot your password?', () => setView('forgot')),
-        linkBtn('Email me a magic link instead', sendMagicLink),
-        googleBtn()
+        linkBtn('Email me a magic link instead', sendMagicLink)
       );
     } else if (view === 'signup') {
       actions.append(
-        linkBtn('Already have an account? Sign in', () => setView('signin')),
-        googleBtn()
+        linkBtn('Already have an account? Sign in', () => setView('signin'))
       );
     } else if (view === 'forgot') {
       actions.append(linkBtn('Back to sign in', () => setView('signin')));
@@ -364,6 +383,7 @@ function wireGate(gate) {
       pwField.inp.placeholder = cfg.pwPlace;
     }
     if (send) send.textContent = cfg.send;
+    renderOauthTop(view);
     renderActions(view);
     setStatus('');
     const first = cfg.email ? email : pwField.inp;
